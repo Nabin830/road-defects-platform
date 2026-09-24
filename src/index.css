@@ -4,19 +4,35 @@
 
 /* ─── Design tokens (light theme) ─── */
 :root {
-  --bg: #F8FAFC;
-  --bg-alt: #F1F5F9;
+  --bg: #FAF8F4;
+  --bg-alt: #F4F1EA;
   --surface: #FFFFFF;
-  --surface-2: #F8FAFC;
-  --border: #E2E8F0;
-  --border-strong: #CBD5E1;
+  --surface-2: #FBF9F6;
+  --border: #EAE5DC;
+  --border-strong: #D6CFC3;
   --ink: #0F172A;
   --ink-2: #334155;
   --muted: #64748B;
   --muted-2: #94A3B8;
+  /* Brand — light cone-orange from the RoadFix logo, charcoal text on top */
+  --brand: #FB9A4B;
+  --brand-hover: #F7862E;
+  --brand-text: #C2540F;
+  --brand-soft: #FFF3E8;
+  --brand-ink: #201F1C;
+  /* Chart series (validated for colour-blind separation on this surface) */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
 }
 
 [data-theme="dark"] {
+  --brand: #FBA35E;
+  --brand-hover: #FDB77E;
+  --brand-text: #FDBA84;
+  --brand-soft: #3A2413;
+  --brand-ink: #201F1C;
+  --series-1: #3987e5;
+  --series-2: #d95926;
   --bg: #080D18;
   --bg-alt: #0C1424;
   --surface: #111B2E;
@@ -42,9 +58,9 @@
   }
   h1, h2, h3, h4 { margin: 0; line-height: 1.2; letter-spacing: -.02em; font-weight: 700; }
   h1 { font-size: 32px; } h2 { font-size: 24px; } h3 { font-size: 20px; } h4 { font-size: 16px; }
-  a { color: #0369A1; text-decoration: none; }
-  a:hover { color: var(--brand, #1E40AF); text-decoration: underline; }
-  :focus-visible { outline: 2px solid #0EA5E9; outline-offset: 2px; border-radius: 4px; }
+  a { color: var(--brand-text); text-decoration: none; }
+  a:hover { color: var(--brand-text); text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
 }
 
 @layer components {
@@ -52,8 +68,9 @@
     @apply inline-flex items-center justify-center gap-[7px] h-10 px-4 rounded-btn font-semibold text-sm whitespace-nowrap transition-all border border-transparent cursor-pointer;
   }
   .btn:active { transform: translateY(1px); }
-  .btn-primary  { @apply bg-brand text-brand-ink shadow-sm hover:bg-blue-800 hover:shadow-md; }
+  .btn-primary  { @apply bg-brand text-brand-ink shadow-sm hover:bg-brand-hover hover:shadow-md; }
   .btn-secondary{ @apply bg-surface text-brand border-border-strong hover:bg-brand-soft hover:border-brand; }
+  .btn-secondary{ color: var(--brand-text); }
   .btn-danger   { @apply bg-rd-600 text-white hover:bg-rd-700; }
   .btn-success  { @apply bg-em-600 text-white hover:bg-em-700; }
   .btn-ghost    { @apply bg-transparent text-muted hover:bg-surface-2 hover:text-ink; }
@@ -63,6 +80,23 @@
   .btn[disabled]{ @apply opacity-50 pointer-events-none; }
 
   .card         { @apply bg-surface border border-border rounded-card shadow-sm; }
+
+  /* Translucent bars (Tailwind's /opacity can't be used with CSS-variable colours) */
+  .glass {
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    -webkit-backdrop-filter: saturate(1.5) blur(12px);
+    backdrop-filter: saturate(1.5) blur(12px);
+  }
+  .icon-btn {
+    @apply w-9 h-9 grid place-items-center rounded-lg border border-border bg-surface text-muted transition-colors hover:text-ink hover:border-border-strong;
+  }
+  .popover {
+    @apply bg-surface border border-border rounded-xl shadow-xl z-[600] overflow-hidden;
+    animation: pop .14s ease-out;
+  }
+  .menu-item {
+    @apply flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13.5px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink text-left;
+  }
   .card-pad     { @apply p-5; }
   .card-hover   { @apply transition-all hover:-translate-y-0.5 hover:shadow-lg hover:border-border-strong; }
   .card-head    { @apply px-5 py-[15px] border-b border-border flex items-center gap-3; }
@@ -87,8 +121,8 @@
     font-family: inherit;
   }
   .input:focus, .select:focus, .textarea:focus {
-    @apply outline-none border-sky-500;
-    box-shadow: 0 0 0 3px color-mix(in srgb, #0EA5E9 22%, transparent);
+    @apply outline-none border-brand;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 28%, transparent);
   }
   .textarea { min-height: 104px; resize: vertical; line-height: 1.55; }
   .input::placeholder, .textarea::placeholder { color: var(--muted-2); }
@@ -123,10 +157,16 @@
 
   .hero-grad {
     background:
-      radial-gradient(900px 420px at 88% -10%, color-mix(in srgb, #0EA5E9 15%, transparent), transparent 70%),
-      radial-gradient(700px 380px at 5% 105%, color-mix(in srgb, #1E40AF 13%, transparent), transparent 70%);
+      radial-gradient(900px 420px at 88% -10%, color-mix(in srgb, #FACC15 14%, transparent), transparent 70%),
+      radial-gradient(700px 380px at 5% 105%, color-mix(in srgb, var(--brand) 18%, transparent), transparent 70%);
   }
 }
+
+/* ─── Dark mode: keep brand-coloured text readable ─── */
+.text-brand { color: var(--brand-text); }
+
+/* Unread notification row */
+.unread { background: color-mix(in srgb, var(--brand) 10%, var(--surface)); }
 
 /* ─── Leaflet dark mode ─── */
 [data-theme="dark"] .leaflet-tile-pane {
@@ -136,7 +176,7 @@
   background: rgba(8,13,24,.8) !important;
   color: #94A3B8 !important;
 }
-[data-theme="dark"] .leaflet-control-attribution a { color: #60A5FA !important; }
+[data-theme="dark"] .leaflet-control-attribution a { color: var(--brand-text) !important; }
 
 /* ─── Map pins ─── */
 .pin { position: relative; width: 26px; height: 26px; }
@@ -147,6 +187,8 @@
 .pin em { position: absolute; inset: 7px; border-radius: 50%; background: #fff; opacity: .85; }
 .pin-drop { animation: drop .45s cubic-bezier(.2,1.5,.4,1); }
 @keyframes drop { from { transform: translateY(-22px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+@keyframes pop { from { transform: translateY(-4px) scale(.98); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ─── Critical severity pulse ─── */
 .pulse-critical {

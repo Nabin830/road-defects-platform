@@ -13,20 +13,14 @@ Open **http://localhost:5173**.
 
 ## Try each role
 
-Create real accounts at `/register` (citizen or contractor), or sign in with the demo accounts that
-already exist in this Supabase project:
-
-| Email | Password | Role |
-|---|---|---|
-| `citizen@example.com` | `demo1234` | Citizen dashboard, report form, my reports |
-| `contractor@example.com` | `demo1234` | Kanban work queue (assigned / in progress / completed) |
-| `admin@example.com` | `demo1234` | Program overview, triage, contractor performance |
+Create real accounts at `/register` (citizen or contractor). The admin account is
+`council@gmail.com` — sign it up, then run `supabase/00-all-in-one.sql` to grant the admin role.
 
 ## Finish the backend setup
 
-Two SQL files still need to be run once in the Supabase SQL Editor for the Follow and photo-upload
-features to work — see `docs/02-SUPABASE.md` step 3: `supabase/05-followers.sql` and
-`supabase/06-storage.sql`.
+Run `supabase/00-all-in-one.sql` once in the Supabase SQL Editor — it wipes the old database and
+creates everything (tables, policies, followers, photo storage) with no dummy data. See
+`docs/02-SUPABASE.md` step 3.
 
 ## Verified
 

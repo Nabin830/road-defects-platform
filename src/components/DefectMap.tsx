@@ -33,9 +33,9 @@ export function DefectMap({ defects, height = 400, onPick, pickedLat, pickedLng,
     if (onPick) {
       map.on('click', (e: L.LeafletMouseEvent) => onPick(e.latlng.lat, e.latlng.lng));
     }
-    // ensure size after mount
-    setTimeout(() => map.invalidateSize(), 100);
-    return () => { map.remove(); mapRef.current = null; };
+    // ensure size after mount (skip if the page was already left)
+    const t = setTimeout(() => { if (mapRef.current === map) map.invalidateSize(); }, 100);
+    return () => { clearTimeout(t); map.stop(); map.remove(); mapRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -63,7 +63,7 @@ export function DefectMap({ defects, height = 400, onPick, pickedLat, pickedLng,
             <span style="padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--ink-2);font-weight:600">${STATUS[d.status].label}</span>
             <span style="color:${color};font-weight:700">${SEVERITY[d.severity].label}</span>
           </div>
-          <a href="#/defect/${d.id}" style="font-size:12px;font-weight:700;color:#1E40AF">View details →</a>
+          <a href="#/defect/${d.id}" style="font-size:12px;font-weight:700;color:#C2540F">View details →</a>
         </div>`;
       marker.bindPopup(popup, { maxWidth: 250 });
       marker.on('click', () => marker.openPopup());
@@ -73,7 +73,7 @@ export function DefectMap({ defects, height = 400, onPick, pickedLat, pickedLng,
     // Auto-fit if we have defects
     if (defects.length > 0) {
       const bounds = L.latLngBounds(defects.map(d => [d.latitude, d.longitude] as [number, number]));
-      if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+      if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14, animate: false });
     }
   }, [defects, nav]);
 
@@ -84,17 +84,21 @@ export function DefectMap({ defects, height = 400, onPick, pickedLat, pickedLng,
     if (pickMarkerRef.current) pickMarkerRef.current.remove();
     const icon = L.divIcon({
       className: '', iconSize: [30, 30], iconAnchor: [15, 30],
-      html: `<div class="pin pin-drop" style="width:30px;height:30px"><b style="background:#1E40AF"></b><em></em></div>`,
+      html: `<div class="pin pin-drop" style="width:30px;height:30px"><b style="background:#F7862E"></b><em></em></div>`,
     });
-    pickMarkerRef.current = L.marker([pickedLat, pickedLng], { icon }).addTo(map);
-    map.panTo([pickedLat, pickedLng]);
+    const marker = L.marker([pickedLat, pickedLng], { icon, draggable: !!onPick }).addTo(map);
+    if (onPick) marker.on('dragend', () => { const p = marker.getLatLng(); onPick(p.lat, p.lng); });
+    pickMarkerRef.current = marker;
+    // zoom in to street level so the exact house/spot is visible
+    map.setView([pickedLat, pickedLng], Math.max(map.getZoom(), 17), { animate: false });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickedLat, pickedLng]);
 
   return (
     <div className="relative rounded-card overflow-hidden border border-border bg-bg-alt" style={{ height }}>
       <div ref={boxRef} className="absolute inset-0" />
       {legend && (
-        <div className="absolute left-2.5 bottom-6 z-[410] p-2.5 grid gap-1.5 bg-surface/95 border border-border rounded-lg shadow-md text-[11px] font-semibold text-ink-2 pointer-events-none">
+        <div className="absolute left-2.5 bottom-6 z-[410] p-2.5 grid gap-1.5 bg-surface border border-border rounded-lg shadow-md text-[11px] font-semibold text-ink-2 pointer-events-none">
           {(['critical', 'high', 'medium', 'low'] as const).map(s => (
             <div key={s} className="flex items-center gap-2">
               <i className="w-2.5 h-2.5 rounded-full block" style={{ background: SEVERITY[s].color }} />

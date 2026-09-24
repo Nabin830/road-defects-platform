@@ -1,4 +1,6 @@
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from './store/auth';
 import { Navbar, TabBar, Footer } from './components/Layout';
 import { ToastHost } from './components/Toast';
 import { ModalHost } from './components/Modal';
@@ -13,9 +15,29 @@ import { DefectDetailPage } from './pages/DefectDetail';
 import { MyReportsPage } from './pages/MyReports';
 import { ContractorPage } from './pages/Contractor';
 import { AdminPage } from './pages/Admin';
+import { ProfilePage } from './pages/Profile';
+import { PeoplePage } from './pages/People';
+import { ReportsPage } from './pages/Reports';
+import { ForgotPasswordPage, ResetPasswordPage } from './pages/PasswordReset';
 
 export function App() {
   const loc = useLocation();
+  const refreshProfile = useAuth(s => s.refreshProfile);
+  const recovery = useAuth(s => s.recovery);
+  const navigate = useNavigate();
+
+  // Opened a password-reset email link → go straight to "choose a new password"
+  useEffect(() => {
+    if (recovery && loc.pathname !== '/reset-password') navigate('/reset-password', { replace: true });
+  }, [recovery, loc.pathname, navigate]);
+
+  // Pick up role changes made by council (e.g. promoted to admin) without signing out and in again
+  useEffect(() => {
+    const onFocus = () => { refreshProfile(); };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [refreshProfile]);
+  useEffect(() => { refreshProfile(); }, [loc.pathname, refreshProfile]);
   const bareLayout = loc.pathname === '/login' || loc.pathname === '/register';
 
   return (
@@ -28,10 +50,15 @@ export function App() {
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/defects" element={<DefectsPage />} />
           <Route path="/defect/:id" element={<DefectDetailPage />} />
-          <Route path="/report" element={<ReportPage />} />
+          <Route path="/report" element={<ProtectedRoute allow={['citizen']}><ReportPage /></ProtectedRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute allow={['citizen']}><DashboardPage /></ProtectedRoute>} />
           <Route path="/my-reports" element={<ProtectedRoute allow={['citizen']}><MyReportsPage /></ProtectedRoute>} />
           <Route path="/contractor" element={<ProtectedRoute allow={['contractor']}><ContractorPage /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/admin/people" element={<ProtectedRoute allow={['admin']}><PeoplePage /></ProtectedRoute>} />
+          <Route path="/admin/reports" element={<ProtectedRoute allow={['admin']}><ReportsPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute allow={['admin']}><AdminPage /></ProtectedRoute>} />
           <Route path="*" element={
             <main className="w-full max-w-[600px] mx-auto px-6 py-20 text-center">

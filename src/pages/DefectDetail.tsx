@@ -7,16 +7,18 @@ import { DefectMap } from '../components/DefectMap';
 import { StatusBadge } from '../components/Badge';
 import { SeverityChip } from '../components/Severity';
 import { Timeline } from '../components/Timeline';
-import { Placeholder } from '../components/Placeholder';
-import { IconArrow, IconStar, IconWrench, IconCheck, IconAlert, IconLeft } from '../lib/icons';
+import { PhotoField } from '../components/PhotoField';
+import { IconArrow, IconStar, IconWrench, IconCheck, IconAlert, IconLeft, IconClock } from '../lib/icons';
 import { typeOf, SEVERITY } from '../lib/constants';
 import { fmt } from '../lib/utils';
-import type { Defect, RepairUpdate, Contractor } from '../lib/types';
+import { slaStatus, dueDate, DEFAULT_FIX_DAYS } from '../lib/sla';
+import { SlaChip } from '../components/SlaChip';
+import type { Defect, RepairUpdate, Contractor, Severity as Sev } from '../lib/types';
 
 export function DefectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
-  const { role, userId, authed } = useAuth();
+  const { role, userId, authed, profile } = useAuth();
   const { toast, openModal, closeModal } = useUI();
 
   const [defect, setDefect] = useState<Defect | null>(null);
@@ -51,44 +53,116 @@ export function DefectDetailPage() {
   if (!defect) return <main className="w-full max-w-[1280px] mx-auto px-6 py-8"><div className="card p-10 text-center text-muted">Loading…</div></main>;
 
   const contractor = defect.contractor_id ? contractors.find(c => c.id === defect.contractor_id) : null;
+  // Contractors can only act on jobs assigned to their own company
+  const myJob = role === 'contractor' && !!profile?.contractor_id && defect.contractor_id === profile.contractor_id;
+  const awaitingResponse = myJob && defect.status === 'assigned' && !defect.accepted_at;
+  const awaitingVerification = defect.status === 'completed' && !defect.verified_at;
+  const verified = defect.status === 'completed' && !!defect.verified_at;
 
-  async function markProgress() {
-    if (!defect) return;
-    await api.updateDefect(defect.id, { status: 'progress' });
-    await api.addUpdate(defect.id, { action: 'Marked in progress', note: 'Crew on site.', progress: 25 }, userId!, 'contractor');
-    await refresh();
-    toast('info', 'Marked in progress', 'Reporter notified.');
+  async function run(fn: () => Promise<void>, errTitle: string) {
+    try { await fn(); }
+    catch (err: any) { toast('error', errTitle, err.message || 'Please try again.'); }
   }
 
-  async function markComplete() {
-    if (!defect) return;
-    await api.updateDefect(defect.id, { status: 'completed', progress: 100 });
-    await api.addUpdate(defect.id, { action: 'Repair complete', note: 'Site cleared. Awaiting inspection.', progress: 100 }, userId!, 'contractor');
-    await refresh();
-    toast('success', 'Marked complete', 'Awaiting council post-works inspection.');
+  function acceptJob() {
+    return run(async () => {
+      if (!defect) return;
+      await api.acceptAssignment(defect.id, userId!);
+      await refresh();
+      toast('success', 'Job accepted', 'It is now in your work queue.');
+    }, 'Could not accept job');
   }
 
-  function openAssign() {
+  function changeSeverity(to: Sev) {
+    return run(async () => {
+      if (!defect || to === defect.severity) return;
+      await api.changeSeverity(defect.id, defect.severity, to, userId!);
+      await refresh();
+      toast('success', 'Severity updated', `Now ${SEVERITY[to].label} — deadline ${SEVERITY[to].sla}.`);
+    }, 'Could not change severity');
+  }
+
+  function verifyRepair() {
+    return run(async () => {
+      if (!defect) return;
+      await api.verifyDefect(defect.id, userId!);
+      await refresh();
+      toast('success', 'Repair verified', 'The defect is now closed.');
+    }, 'Could not verify repair');
+  }
+
+  function openRework() {
+    openModal(<ReworkModal onSubmit={(note) => run(async () => {
+      if (!defect) return;
+      await api.requestRework(defect.id, note, userId!);
+      await refresh();
+      closeModal();
+      toast('info', 'Sent back for rework', 'The contractor will see your note.');
+    }, 'Could not send back')} onCancel={closeModal} />);
+  }
+
+  function openDecline() {
+    openModal(<DeclineModal onSubmit={(reason) => run(async () => {
+      if (!defect) return;
+      await api.declineAssignment(defect.id, reason, userId!);
+      closeModal();
+      toast('info', 'Job declined', 'Council has been notified to reassign it.');
+      nav('/contractor');
+    }, 'Could not decline job')} onCancel={closeModal} />);
+  }
+
+  function markProgress() {
+    return run(async () => {
+      if (!defect) return;
+      await api.updateDefect(defect.id, { status: 'progress', accepted_at: defect.accepted_at || new Date().toISOString() });
+      await api.addUpdate(defect.id, { action: 'Work started', note: 'Crew on site.', progress: Math.max(defect.progress, 25) }, userId!, 'contractor');
+      await refresh();
+      toast('info', 'Marked in progress', 'The update is on the timeline.');
+    }, 'Could not update job');
+  }
+
+  function markComplete() {
+    openModal(<CompleteModal onCancel={closeModal} onSubmit={(note, photo) => run(async () => {
+      if (!defect) return;
+      const photo_url = photo ? await api.uploadPhoto(photo, userId!) : null;
+      await api.updateDefect(defect.id, { status: 'completed', progress: 100 });
+      await api.addUpdate(defect.id, { action: 'Repair complete', note: note || 'Site cleared. Waiting for council to verify.', progress: 100, photo_url }, userId!, 'contractor');
+      await refresh();
+      closeModal();
+      toast('success', 'Marked complete', 'Sent to council for verification.');
+    }, 'Could not complete job')} />);
+  }
+
+  async function openAssign() {
+    // Reload so contractors who signed up since the page opened are listed
+    const list = await api.listContractors().catch(() => contractors);
+    setContractors(list);
     openModal(
-      <AssignModal contractors={contractors} onPick={async (cId) => {
+      <AssignModal contractors={list} severity={defect!.severity}
+                   initialInstructions={defect!.work_instructions || ''} onPick={(cId, instructions, days) => run(async () => {
         if (!defect) return;
-        await api.assignDefect(defect.id, cId);
-        await api.addUpdate(defect.id, { action: 'Assigned', note: `Assigned to contractor ${contractors.find(c => c.id === cId)?.name || cId}` }, userId!, 'admin');
+        const due = new Date(Date.now() + days * 86400000);
+        await api.assignDefect(defect.id, cId, instructions, due.toISOString());
+        const who = list.find(c => c.id === cId)?.name || cId;
+        await api.addUpdate(defect.id, {
+          action: 'Assigned',
+          note: `Assigned to ${who}. Fix within ${days} day${days === 1 ? '' : 's'} (by ${fmtDue(due)}).\nWork to do: ${instructions}`,
+        }, userId!, 'admin');
         await refresh();
         closeModal();
-        toast('success', 'Contractor assigned', 'Job pack sent. Reporter notified.');
-      }} onCancel={closeModal} />
+        toast('success', 'Contractor assigned', 'Waiting for the contractor to accept.');
+      }, 'Could not assign contractor')} onCancel={closeModal} />
     );
   }
 
   function openReject() {
-    openModal(<RejectModal onSubmit={async (reason) => {
+    openModal(<RejectModal onSubmit={(reason) => run(async () => {
       if (!defect) return;
       await api.rejectDefect(defect.id, reason, userId!);
       await refresh();
       closeModal();
-      toast('error', 'Report rejected', 'The reporter has been emailed the reason.');
-    }} onCancel={closeModal} />);
+      toast('info', 'Report rejected', 'The reporter can see the reason on this page.');
+    }, 'Could not reject report')} onCancel={closeModal} />);
   }
 
   async function toggleVote() {
@@ -117,40 +191,41 @@ export function DefectDetailPage() {
   }
 
   function openAddUpdate() {
-    openModal(<AddUpdateModal onSubmit={async (note, progress) => {
+    openModal(<AddUpdateModal onSubmit={(note, progress, photo) => run(async () => {
       if (!defect) return;
-      await api.addUpdate(defect.id, { action: 'Progress update', note, progress }, userId!, 'contractor');
+      const photo_url = photo ? await api.uploadPhoto(photo, userId!) : null;
+      await api.addUpdate(defect.id, { action: 'Progress update', note, progress, photo_url }, userId!, 'contractor');
       await refresh();
       closeModal();
       toast('success', 'Update published', 'Progress note added to the timeline.');
-    }} onCancel={closeModal} currentProgress={defect?.progress ?? 0} />);
+    }, 'Could not publish update')} onCancel={closeModal} currentProgress={defect?.progress ?? 0} />);
   }
 
   return (
     <main className="w-full max-w-[1280px] mx-auto px-6 py-8">
       <button onClick={() => nav(-1)} className="btn btn-ghost btn-sm mb-4"><IconLeft size={14} /> Back</button>
 
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_360px] gap-6">
-        {/* Left: image, description, timeline */}
-        <div className="space-y-6">
-          <div className="card overflow-hidden">
-            <div className="relative aspect-[16/9]">
-              {defect.photo_url ? (
-                <img src={defect.photo_url} alt={defect.title} className="absolute inset-0 w-full h-full object-cover" />
-              ) : (
-                <Placeholder label={`${typeOf(defect.defect_type).label} — ${defect.road}`} className="absolute inset-0 !border-0" />
-              )}
-              <div className="absolute top-3 left-3"><StatusBadge status={defect.status} /></div>
-              <div className="absolute top-3 right-3"><SeverityChip level={defect.severity} /></div>
-            </div>
+      {/* Mobile order: summary → actions → map → timeline. Desktop: two columns. */}
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_auto_1fr] gap-6 items-start">
+          <div className="card overflow-hidden order-1 lg:order-none lg:col-start-1">
+            {defect.photo_url && (
+              <a href={defect.photo_url} target="_blank" rel="noreferrer" className="block bg-surface-2">
+                <img src={defect.photo_url} alt={defect.title} className="w-full max-h-[420px] object-cover" />
+              </a>
+            )}
             <div className="p-6">
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <StatusBadge status={defect.status} verified={!!defect.verified_at} />
+                <SeverityChip level={defect.severity} />
+                <span className="text-xs text-muted">· {typeOf(defect.defect_type).label}</span>
+              </div>
               <div className="flex items-center gap-2 text-xs text-muted mb-2">
                 <span className="mono">{defect.id}</span>
                 <span>·</span>
                 <span>Reported {fmt(defect.reported_at)}</span>
               </div>
-              <h1>{defect.title}</h1>
-              <p className="text-[15px] text-ink-2 leading-relaxed mt-3">{defect.description}</p>
+              <h1 className="text-[26px] sm:text-[30px]">{defect.title}</h1>
+              {defect.description && <p className="text-[15px] text-ink-2 leading-relaxed mt-3 whitespace-pre-line">{defect.description}</p>}
               {defect.reject_reason && (
                 <div className="mt-4 p-3 rounded-lg bg-rd-50 border border-rd-600/25 flex items-start gap-2.5">
                   <span className="text-rd-600 mt-0.5"><IconAlert size={16} /></span>
@@ -163,14 +238,28 @@ export function DefectDetailPage() {
             </div>
           </div>
 
-          <div className="card p-6">
+          {defect.work_instructions && defect.status !== 'pending' && defect.status !== 'rejected' && (
+            <div className="card p-6 order-3 lg:order-none lg:col-start-1 border-brand">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <h3 className="flex items-center gap-2"><IconWrench size={18} /> Work order from council</h3>
+                <SlaChip d={defect} className="!text-[13px]" />
+              </div>
+              <p className="text-[14.5px] text-ink-2 leading-relaxed whitespace-pre-line">{defect.work_instructions}</p>
+              <div className="mt-4 p-3 rounded-lg bg-brand-soft flex items-center gap-2.5 text-[13.5px]">
+                <IconClock size={16} />
+                <span>Fix by <b>{fmtDue(dueDate(defect))}</b>{contractor ? <> · {contractor.name}</> : null}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="card p-6 order-3 lg:order-none lg:col-start-1">
             <h3 className="mb-4">Location</h3>
             <DefectMap defects={[defect]} height={320} legend={false} />
             <div className="mt-3 text-[13.5px] text-muted">{defect.road}{defect.suburb ? `, ${defect.suburb}` : ''}</div>
           </div>
 
           {updates.length > 0 && (
-            <div className="card p-6">
+            <div className="card p-6 order-4 lg:order-none lg:col-start-1">
               <h3 className="mb-5">Repair progress</h3>
               {defect.status !== 'pending' && defect.status !== 'rejected' && (
                 <div className="mb-6 p-4 rounded-lg bg-surface-2 border border-border">
@@ -184,38 +273,9 @@ export function DefectDetailPage() {
               <Timeline updates={updates} />
             </div>
           )}
-        </div>
 
-        {/* Right: details + actions */}
-        <aside className="space-y-4">
-          <div className="card p-5">
-            <h4 className="mb-3">Details</h4>
-            <dl className="grid grid-cols-[110px_1fr] gap-y-2.5 gap-x-4 text-[13.5px]">
-              <dt className="text-muted text-[12.5px]">Type</dt>
-              <dd className="font-semibold">{typeOf(defect.defect_type).label}</dd>
-              <dt className="text-muted text-[12.5px]">Severity</dt>
-              <dd><SeverityChip level={defect.severity} /></dd>
-              <dt className="text-muted text-[12.5px]">Status</dt>
-              <dd><StatusBadge status={defect.status} /></dd>
-              <dt className="text-muted text-[12.5px]">SLA</dt>
-              <dd className="font-semibold">{SEVERITY[defect.severity].sla}</dd>
-              {defect.depth && (<>
-                <dt className="text-muted text-[12.5px]">Depth</dt>
-                <dd className="font-semibold">{defect.depth}</dd>
-              </>)}
-              {defect.width && (<>
-                <dt className="text-muted text-[12.5px]">Extent</dt>
-                <dd className="font-semibold">{defect.width}</dd>
-              </>)}
-              <dt className="text-muted text-[12.5px]">Community backing</dt>
-              <dd className="font-semibold mono">{defect.votes}</dd>
-              {contractor && (<>
-                <dt className="text-muted text-[12.5px]">Contractor</dt>
-                <dd className="font-semibold">{contractor.name}</dd>
-              </>)}
-            </dl>
-          </div>
-
+        {/* Right: actions + details */}
+        <aside className="space-y-4 order-2 lg:order-none lg:col-start-2 lg:row-start-1 lg:row-span-3">
           {/* Actions per role */}
           <div className="card p-5 space-y-2.5">
             <h4 className="mb-2">Actions</h4>
@@ -231,25 +291,59 @@ export function DefectDetailPage() {
                 </button>
               </>
             )}
-            {role === 'contractor' && authed && (
+            {awaitingResponse && (
               <>
-                {defect.status !== 'progress' && defect.status !== 'completed' && (
+                <p className="text-[13px] text-muted">Council has assigned this job to you. Accept it or decline so it can be reassigned.</p>
+                <button onClick={acceptJob} className="btn btn-success btn-block">
+                  <IconCheck size={16} /> Accept job
+                </button>
+                <button onClick={openDecline} className="btn btn-danger btn-block">Decline job</button>
+              </>
+            )}
+            {myJob && awaitingVerification && (
+              <p className="text-[13px] text-muted">Marked complete — waiting for council to verify the repair.</p>
+            )}
+            {myJob && !awaitingResponse && defect.status !== 'completed' && (
+              <>
+                {defect.status !== 'progress' && (
                   <button onClick={markProgress} className="btn btn-primary btn-block">
                     <IconWrench size={16} /> Mark in progress
                   </button>
                 )}
-                {defect.status !== 'completed' && (
-                  <button onClick={markComplete} className="btn btn-success btn-block">
-                    <IconCheck size={16} /> Mark complete
-                  </button>
-                )}
+                <button onClick={markComplete} className="btn btn-success btn-block">
+                  <IconCheck size={16} /> Mark complete
+                </button>
                 <button onClick={openAddUpdate} className="btn btn-secondary btn-block">Add progress update</button>
               </>
             )}
-            {role === 'admin' && authed && (
+            {role === 'contractor' && authed && !myJob && (
+              <p className="text-[13px] text-muted">This job isn't assigned to your company.</p>
+            )}
+            {role === 'admin' && authed && awaitingVerification && (
               <>
-                <button onClick={openAssign} className="btn btn-primary btn-block">Assign contractor</button>
-                <button onClick={openReject} className="btn btn-danger btn-block">Reject report</button>
+                <p className="text-[13px] text-muted">The contractor has marked this repair complete. Check the work, then verify it or send it back.</p>
+                <button onClick={verifyRepair} className="btn btn-success btn-block">
+                  <IconCheck size={16} /> Verify &amp; close
+                </button>
+                <button onClick={openRework} className="btn btn-danger btn-block">Send back for rework</button>
+              </>
+            )}
+            {verified && (
+              <p className="text-[13px] font-semibold text-emerald-700 flex items-center gap-1.5">
+                <IconCheck size={15} /> Verified by council {fmt(defect.verified_at!)} — closed
+              </p>
+            )}
+            {role === 'admin' && authed && defect.status !== 'completed' && (
+              <>
+                {defect.status === 'assigned' && !defect.accepted_at && (
+                  <p className="text-[13px] text-muted">Waiting for {contractor?.name || 'the contractor'} to accept or decline.</p>
+                )}
+                <button onClick={openAssign} className="btn btn-primary btn-block">
+                  {defect.status === 'rejected' ? 'Reopen & assign contractor' : defect.contractor_id ? 'Reassign contractor' : 'Assign contractor'}
+                </button>
+                {defect.status !== 'rejected' && (
+                  <button onClick={openReject} className="btn btn-danger btn-block">Reject report</button>
+                )}
               </>
             )}
             {!authed && (
@@ -258,6 +352,48 @@ export function DefectDetailPage() {
                 <Link to="/register" className="btn btn-secondary btn-block hover:no-underline">Create account</Link>
               </>
             )}
+          </div>
+
+          <div className="card p-5">
+            <h4 className="mb-3">Details</h4>
+            <dl className="grid grid-cols-[110px_1fr] gap-y-2.5 gap-x-4 text-[13.5px]">
+              {role === 'admin' && defect.status !== 'completed' && defect.status !== 'rejected' && (<>
+                <dt className="text-muted text-[12.5px]">Severity</dt>
+                <dd>
+                  <select className="select !min-h-0 !py-1 !px-2 !text-[13px] w-auto" value={defect.severity}
+                          aria-label="Change severity"
+                          onChange={(e) => changeSeverity(e.target.value as Sev)}>
+                    {(['low', 'medium', 'high', 'critical'] as const).map(s => <option key={s} value={s}>{SEVERITY[s].label}</option>)}
+                  </select>
+                </dd>
+              </>)}
+              {slaStatus(defect) && (<>
+                <dt className="text-muted text-[12.5px]">Fix by</dt>
+                <dd>
+                  <div className="font-semibold">{fmtDue(dueDate(defect))}</div>
+                  <SlaChip d={defect} className="!text-[12.5px]" />
+                  <div className="text-[11.5px] text-muted">{defect.due_at ? 'Set by council' : `Standard target for ${SEVERITY[defect.severity].label.toLowerCase()} severity`}</div>
+                </dd>
+              </>)}
+              {defect.depth && (<>
+                <dt className="text-muted text-[12.5px]">Depth</dt>
+                <dd className="font-semibold">{defect.depth}</dd>
+              </>)}
+              {defect.width && (<>
+                <dt className="text-muted text-[12.5px]">Extent</dt>
+                <dd className="font-semibold">{defect.width}</dd>
+              </>)}
+              <dt className="text-muted text-[12.5px]">Community backing</dt>
+              <dd className="font-semibold mono">{defect.votes}</dd>
+              {contractor && (<>
+                <dt className="text-muted text-[12.5px]">Contractor</dt>
+                <dd className="font-semibold">{contractor.name}</dd>
+              </>)}
+              {defect.status === 'completed' && (<>
+                <dt className="text-muted text-[12.5px]">Verification</dt>
+                <dd className="font-semibold">{verified ? 'Verified by council' : 'Awaiting council check'}</dd>
+              </>)}
+            </dl>
           </div>
 
           <Link to="/defects" className="btn btn-ghost btn-block hover:no-underline">
@@ -270,37 +406,77 @@ export function DefectDetailPage() {
 }
 
 /* Modals */
-function AssignModal({ contractors, onPick, onCancel }: { contractors: Contractor[]; onPick: (id: string) => void; onCancel: () => void }) {
+function fmtDue(d: Date) {
+  return d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function AssignModal({ contractors, severity, initialInstructions, onPick, onCancel }: {
+  contractors: Contractor[]; severity: Sev; initialInstructions: string;
+  onPick: (id: string, instructions: string, days: number) => void; onCancel: () => void;
+}) {
   const [selected, setSelected] = useState<string>('');
+  const [instructions, setInstructions] = useState(initialInstructions);
+  const [days, setDays] = useState(String(DEFAULT_FIX_DAYS[severity]));
+  const n = Math.floor(Number(days));
+  const daysOk = Number.isFinite(n) && n >= 1 && n <= 365;
+  const ready = !!selected && instructions.trim().length >= 10 && daysOk;
   return (
     <>
       <header className="p-5 pb-0"><h3>Assign a contractor</h3></header>
-      <div className="p-4 px-5 pt-3">
-        <p className="text-[13.5px] text-muted mb-3">Pick the crew best suited to this defect.</p>
+      <div className="p-4 px-5 pt-3 max-h-[70vh] overflow-y-auto">
+        <div className="grid gap-1.5 mb-4">
+          <label className="label" htmlFor="wo-text">What needs to be done? <span className="text-rd-600">*</span></label>
+          <textarea id="wo-text" className="textarea" value={instructions} onChange={(e) => setInstructions(e.target.value)}
+                    placeholder="e.g. Cut out and patch the pothole with hot-mix asphalt, about 1 m². Put up traffic control, repaint the lane line after, and upload before/after photos." />
+          <span className="text-[11.5px] text-muted">The contractor sees this before accepting the job.</span>
+        </div>
+        <div className="grid gap-1.5 mb-5">
+          <label className="label" htmlFor="wo-days">Days to fix <span className="text-rd-600">*</span></label>
+          <div className="flex flex-wrap items-center gap-2">
+            <input id="wo-days" type="number" min={1} max={365} inputMode="numeric" className="input !w-24" value={days}
+                   onChange={(e) => setDays(e.target.value)} />
+            {[1, 3, 5, 7, 10].map(d => (
+              <button key={d} type="button" onClick={() => setDays(String(d))}
+                      className="chip" aria-pressed={n === d}>{d} day{d === 1 ? '' : 's'}</button>
+            ))}
+          </div>
+          <span className={`text-[12px] ${daysOk ? 'text-muted' : 'text-rd-600'}`}>
+            {daysOk ? <>Fix by <b className="text-ink">{fmtDue(new Date(Date.now() + n * 86400000))}</b> · target for {SEVERITY[severity].label.toLowerCase()} severity: {SEVERITY[severity].sla}</>
+                    : 'Enter a number of days between 1 and 365.'}
+          </span>
+        </div>
+        <p className="label mb-2">Contractor <span className="text-rd-600">*</span></p>
         <div className="grid gap-2">
+          {contractors.length === 0 && (
+            <div className="card p-4 text-[13px] text-muted">
+              No contractors yet. A contractor appears here as soon as they sign up at <b>/register</b> choosing "I'm a contractor".
+            </div>
+          )}
           {contractors.map(c => (
             <label key={c.id} className={`card p-3 flex items-center gap-3 cursor-pointer ${selected === c.id ? 'border-brand bg-brand-soft' : ''}`}>
               <input type="radio" name="con" value={c.id} checked={selected === c.id} onChange={() => setSelected(c.id)} className="accent-brand" />
               <div className="flex-1">
                 <div className="text-[13.5px] font-semibold">{c.name}</div>
-                <div className="text-[11.5px] text-muted mt-0.5">Crew of {c.crew_size} · Rating {c.rating}</div>
               </div>
-              <span className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 grid place-items-center text-xs font-bold">{c.abbr}</span>
+              <span className="w-8 h-8 rounded-full bg-brand-soft text-brand grid place-items-center text-xs font-bold">{c.abbr}</span>
             </label>
           ))}
         </div>
       </div>
       <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
         <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-        <button className="btn btn-primary" onClick={() => selected && onPick(selected)} disabled={!selected}>Assign</button>
+        <button className="btn btn-primary" onClick={() => ready && onPick(selected, instructions.trim(), n)} disabled={!ready}
+                title={ready ? undefined : 'Write the work to do (at least 10 characters), set the days, and pick a contractor'}>Assign</button>
       </footer>
     </>
   );
 }
 
-function AddUpdateModal({ onSubmit, onCancel, currentProgress }: { onSubmit: (note: string, progress: number) => void; onCancel: () => void; currentProgress: number }) {
+function AddUpdateModal({ onSubmit, onCancel, currentProgress }: { onSubmit: (note: string, progress: number, photo: File | null) => Promise<void> | void; onCancel: () => void; currentProgress: number }) {
   const [note, setNote] = useState('');
   const [progress, setProgress] = useState(currentProgress);
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
   return (
     <>
       <header className="p-5 pb-0"><h3>Add a progress update</h3></header>
@@ -318,10 +494,14 @@ function AddUpdateModal({ onSubmit, onCancel, currentProgress }: { onSubmit: (no
           <input id="upd-prog" type="range" min={0} max={100} step={5} value={progress}
                  onChange={(e) => setProgress(Number(e.target.value))} className="w-full accent-brand" />
         </div>
+        <PhotoField onChange={setPhoto} label="Add a site photo (optional)" />
       </div>
       <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
         <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-        <button className="btn btn-primary" onClick={() => note.trim() && onSubmit(note.trim(), progress)} disabled={!note.trim()}>Publish update</button>
+        <button className="btn btn-primary" disabled={!note.trim() || busy}
+                onClick={async () => { if (!note.trim()) return; setBusy(true); await onSubmit(note.trim(), progress, photo); setBusy(false); }}>
+          {busy ? 'Publishing…' : 'Publish update'}
+        </button>
       </footer>
     </>
   );
@@ -333,7 +513,7 @@ function RejectModal({ onSubmit, onCancel }: { onSubmit: (reason: string) => voi
     <>
       <header className="p-5 pb-0"><h3>Reject this report</h3></header>
       <div className="p-4 px-5 pt-3">
-        <p className="text-[13.5px] text-muted mb-3">The reporter will be emailed the reason. Common reasons:</p>
+        <p className="text-[13.5px] text-muted mb-3">The reporter will see this reason on the report. Common reasons:</p>
         <div className="flex flex-wrap gap-2 mb-3">
           {['Outside council boundary', 'Duplicate of existing report', 'Not a defect (works underway)', 'Insufficient information'].map(r => (
             <button key={r} onClick={() => setReason(r)} className="chip">{r}</button>
@@ -344,6 +524,77 @@ function RejectModal({ onSubmit, onCancel }: { onSubmit: (reason: string) => voi
       <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
         <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
         <button className="btn btn-danger" onClick={() => reason.trim() && onSubmit(reason.trim())} disabled={!reason.trim()}>Reject report</button>
+      </footer>
+    </>
+  );
+}
+
+function DeclineModal({ onSubmit, onCancel }: { onSubmit: (reason: string) => void; onCancel: () => void }) {
+  const [reason, setReason] = useState('');
+  return (
+    <>
+      <header className="p-5 pb-0"><h3>Decline this job</h3></header>
+      <div className="p-4 px-5 pt-3">
+        <p className="text-[13.5px] text-muted mb-3">The job goes back to council to reassign. Let them know why:</p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {['No crew available', 'Outside our service area', 'Needs specialist equipment', 'Schedule is full'].map(r => (
+            <button key={r} onClick={() => setReason(r)} className="chip">{r}</button>
+          ))}
+        </div>
+        <textarea className="textarea" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason…" />
+      </div>
+      <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
+        <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+        <button className="btn btn-danger" onClick={() => reason.trim() && onSubmit(reason.trim())} disabled={!reason.trim()}>Decline job</button>
+      </footer>
+    </>
+  );
+}
+
+function ReworkModal({ onSubmit, onCancel }: { onSubmit: (note: string) => void; onCancel: () => void }) {
+  const [note, setNote] = useState('');
+  return (
+    <>
+      <header className="p-5 pb-0"><h3>Send back for rework</h3></header>
+      <div className="p-4 px-5 pt-3">
+        <p className="text-[13.5px] text-muted mb-3">The job goes back to the contractor as in progress. Tell them what still needs fixing:</p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {['Repair incomplete', 'Poor finish quality', 'Site not cleaned up', 'Wrong location repaired'].map(r => (
+            <button key={r} onClick={() => setNote(r)} className="chip">{r}</button>
+          ))}
+        </div>
+        <textarea className="textarea" value={note} onChange={(e) => setNote(e.target.value)} placeholder="What needs fixing…" />
+      </div>
+      <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
+        <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+        <button className="btn btn-danger" onClick={() => note.trim() && onSubmit(note.trim())} disabled={!note.trim()}>Send back</button>
+      </footer>
+    </>
+  );
+}
+
+function CompleteModal({ onSubmit, onCancel }: { onSubmit: (note: string, photo: File | null) => Promise<void> | void; onCancel: () => void }) {
+  const [note, setNote] = useState('');
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <>
+      <header className="p-5 pb-0"><h3>Mark repair complete</h3></header>
+      <div className="p-4 px-5 pt-3 space-y-4">
+        <p className="text-[13.5px] text-muted">Council will check the work before closing the job. A photo of the finished repair makes that quicker.</p>
+        <PhotoField onChange={setPhoto} label="Add a photo of the finished repair" />
+        <div className="grid gap-1.5">
+          <label className="label" htmlFor="done-note">Notes for council (optional)</label>
+          <textarea id="done-note" className="textarea !min-h-[80px]" value={note} onChange={(e) => setNote(e.target.value)}
+                    placeholder="e.g. Hot-mix patch laid and compacted, site swept." />
+        </div>
+      </div>
+      <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
+        <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+        <button className="btn btn-success" disabled={busy}
+                onClick={async () => { setBusy(true); await onSubmit(note.trim(), photo); setBusy(false); }}>
+          {busy ? 'Submitting…' : 'Mark complete'}
+        </button>
       </footer>
     </>
   );

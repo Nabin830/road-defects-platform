@@ -4,18 +4,19 @@ import { relativeTime } from '../lib/utils';
 import { StatusBadge } from './Badge';
 import { SeverityChip } from './Severity';
 import { Placeholder } from './Placeholder';
+import { SlaChip } from './SlaChip';
 import { typeOf } from '../lib/constants';
 
 export function DefectCard({ d }: { d: Defect }) {
   return (
     <Link to={`/defect/${d.id}`} className="card card-hover overflow-hidden group hover:no-underline">
-      <div className="relative aspect-video">
+      <div className={`relative ${d.photo_url ? "aspect-video" : "aspect-[16/6]"}`}>
         {d.photo_url ? (
           <img src={d.photo_url} alt={d.title} className="absolute inset-0 w-full h-full object-cover" />
         ) : (
           <Placeholder label={`${typeOf(d.defect_type).label} — ${d.road}`} className="absolute inset-0 !border-0 !border-b" />
         )}
-        <div className="absolute top-2 right-2"><StatusBadge status={d.status} /></div>
+        <div className="absolute top-2 right-2"><StatusBadge status={d.status} verified={!!d.verified_at} /></div>
       </div>
       <div className="p-4 space-y-2">
         <div className="flex items-center gap-2 text-xs text-muted">
@@ -25,6 +26,7 @@ export function DefectCard({ d }: { d: Defect }) {
         </div>
         <h4 className="text-[15px] font-semibold text-ink leading-tight line-clamp-2 group-hover:text-brand">{d.title}</h4>
         <div className="text-[12.5px] text-muted line-clamp-1">{d.road}</div>
+        <SlaChip d={d} />
         <div className="flex items-center justify-between pt-1">
           <SeverityChip level={d.severity} />
           <span className="mono text-xs text-muted">{d.votes} backing</span>

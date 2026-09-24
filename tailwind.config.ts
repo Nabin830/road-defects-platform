@@ -8,9 +8,10 @@ export default {
       colors: {
         // Brand
         brand: {
-          DEFAULT: '#1E40AF',
-          soft: '#EFF6FF',
-          ink: '#FFFFFF',
+          DEFAULT: 'var(--brand)',
+          hover: 'var(--brand-hover)',
+          soft: 'var(--brand-soft)',
+          ink: 'var(--brand-ink)',
         },
         blue: {
           50: '#EFF6FF', 100: '#DBEAFE', 600: '#2563EB', 700: '#1E40AF', 800: '#1E3A8A',

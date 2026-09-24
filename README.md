@@ -1,8 +1,30 @@
-# Road Defects Assessment Platform — React + TypeScript
+![RoadFix](src/Logos/website-header.png)
 
-A civic infrastructure app for NSW councils. Residents report road defects, contractors fix them, admins triage.
+# RoadFix — React + TypeScript
+
+RoadFix is a civic infrastructure app for NSW councils. Residents report road defects, contractors fix them, admins triage.
 
 Built for the Central West NSW pilot (Orange, Cabonne, Blayney, Cowra LGAs) as part of the Charles Darwin University PRT631 Information Systems Practicum.
+
+## Brand
+
+![RoadFix brand sheet](src/Logos/roadfix-all-in-one.png)
+
+All RoadFix artwork lives in `src/Logos/`:
+
+| File | Used for |
+| --- | --- |
+| `logo-transparent-black.png` / `logo-transparent-white.png` | Navbar, footer, sign-in/register (light / dark theme, via trimmed copies) |
+| `logo-light.png` / `logo-dark.png` | Home page call-to-action banner (light / dark theme); `logo-dark` is also the social share image |
+| `favicon.png` | Browser tab icon |
+| `app-icon-rounded.png` | iOS home-screen icon (`apple-touch-icon`) |
+| `app-icon-1024.png` / `social-avatar.png` | PWA manifest icons (standard / maskable) |
+| `sticker-lockup.png` / `sticker-icon.png` | Sign-in / register brand panel illustrations |
+| `vehicle-decal.png` | Contractor "My jobs" banner |
+| `website-header.png`, `roadfix-all-in-one.png` | This README |
+| <img src="src/Logos/wordmark-transparent.png" alt="RoadFix wordmark" height="40" /> `wordmark-transparent.png` | Text-only wordmark for print and light backgrounds |
+
+Files in `public/` (favicon, icons, `og-image.png`) are copies of the originals, since `index.html` and the manifest need fixed URLs.
 
 ## Stack
 
@@ -28,25 +50,19 @@ so the UI can be previewed without a backend — it never runs while Supabase is
 
 ## Accounts
 
-Register a real account at `/register` (citizen or contractor), or sign in with the seeded demo
-accounts already present in the connected Supabase project:
-
-| Email | Password | Role |
-|---|---|---|
-| `citizen@example.com` | `demo1234` | Citizen (report defects, follow updates, back reports) |
-| `contractor@example.com` | `demo1234` | Contractor (kanban work queue) |
-| `admin@example.com` | `demo1234` | Admin (triage, assign, analytics, CSV export) |
+Register a real account at `/register` (citizen or contractor). The admin account is
+`council@gmail.com` — sign it up, then run `supabase/00-all-in-one.sql` to grant the admin role.
 
 Admin accounts and contractor↔company links are granted via a one-line SQL update by an existing
 admin, not via self-registration — see `docs/02-SUPABASE.md`.
 
-Two SQL files add the last two real features (run once in the Supabase SQL Editor):
-`supabase/05-followers.sql` (Follow updates) and `supabase/06-storage.sql` (real photo uploads).
+The whole database is set up by one file, run once in the Supabase SQL Editor:
+`supabase/00-all-in-one.sql` (wipes old data, creates everything, no dummy data).
 
 ## Project structure
 
 ```
-road-defects-react/
+roadfix/
 ├─ src/
 │  ├─ main.tsx              React entry, mounts App, inits stores
 │  ├─ App.tsx               Router — all routes with role guards
@@ -85,12 +101,7 @@ road-defects-react/
 │      ├─ Contractor.tsx    Contractor kanban (assigned/progress/completed)
 │      └─ Admin.tsx         Council dashboard — charts, contractors, triage
 ├─ supabase/
-│  ├─ 01-schema.sql         Tables, indexes, triggers
-│  ├─ 02-policies.sql       RLS policies (helpers + per-table rules)
-│  ├─ 03-seed.sql           17 real Orange defects + 4 contractors
-│  ├─ 04-link-users.sql     Promotes demo signups to admin/contractor
-│  ├─ 05-followers.sql      "Follow updates" table + RLS
-│  └─ 06-storage.sql        defect-photos storage bucket + RLS
+│  └─ 00-all-in-one.sql     Wipe + full schema, RLS, followers, storage (no seed data)
 ├─ docs/                    Setup, Supabase, deployment, troubleshooting
 ├─ package.json
 ├─ vite.config.ts

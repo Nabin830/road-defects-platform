@@ -1,12 +1,25 @@
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
+import { reverseGeocode } from '../lib/geocode';
 import { useAuth } from '../store/auth';
 import { useUI } from '../store/ui';
 import { DefectMap } from '../components/DefectMap';
 import { TYPES, SEVERITY } from '../lib/constants';
 import { IconCrosshair, IconLeft, IconRight, IconUpload, IconCheck, IconAlert, IconX } from '../lib/icons';
-import type { DefectType, Severity } from '../lib/types';
+import type { Defect, DefectType, Severity } from '../lib/types';
+import { SeverityChip } from '../components/Severity';
+import { StatusBadge } from '../components/Badge';
+
+/** Distance in metres between two lat/lng points. */
+function metres(aLat: number, aLng: number, bLat: number, bLng: number) {
+  const R = 6371000, r = Math.PI / 180;
+  const dLat = (bLat - aLat) * r, dLng = (bLng - aLng) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * r) * Math.cos(bLat * r) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+const NEARBY_M = 150;
 
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 
@@ -20,6 +33,10 @@ export function ReportPage() {
   const [lng, setLng] = useState<number | null>(null);
   const [place, setPlace] = useState('');
   const [locating, setLocating] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
+  const [accuracy, setAccuracy] = useState<number | null>(null);
+  const placeAuto = useRef(true);   // true while the road field holds an address we filled in (not typed by the user)
+  const watchId = useRef<number | null>(null);
   const [type, setType] = useState<DefectType | ''>('');
   const [sev, setSev] = useState<Severity | ''>('');
   const [title, setTitle] = useState('');
@@ -28,27 +45,83 @@ export function ReportPage() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [existing, setExisting] = useState<Defect[]>([]);
+
+  useEffect(() => { api.listDefects({}).then(setExisting).catch(() => {}); }, []);
+
+  // Open reports close to the chosen spot — likely the same defect
+  const nearby = useMemo(() => {
+    if (lat == null || lng == null) return [];
+    return existing
+      .filter(d => d.status !== 'completed' && d.status !== 'rejected')
+      .map(d => ({ d, m: metres(lat, lng, d.latitude, d.longitude) }))
+      .filter(x => x.m <= NEARBY_M)
+      .sort((a, b) => a.m - b.m)
+      .slice(0, 3);
+  }, [existing, lat, lng]);
 
   const steps = ['Location', 'Details', 'Photo & submit'];
 
+  // Look up the street address whenever the pin moves, and fill the road field unless the user typed their own
+  useEffect(() => {
+    if (lat == null || lng == null) return;
+    const ctrl = new AbortController();
+    const t = setTimeout(() => {
+      setLookingUp(true);
+      reverseGeocode(lat, lng, ctrl.signal)
+        .then(addr => { if (addr && (placeAuto.current || !place.trim())) { setPlace(addr); placeAuto.current = true; } })
+        .catch(() => {})
+        .finally(() => { if (!ctrl.signal.aborted) setLookingUp(false); });
+    }, 500);
+    return () => { clearTimeout(t); ctrl.abort(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lat, lng]);
+
+  useEffect(() => () => { if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current); }, []);
+
+  function pickSpot(la: number, ln: number) {
+    setLat(la); setLng(ln); setAccuracy(null);
+  }
+
+  /** Watches GPS for a few seconds and keeps the most accurate fix — the first reading is often off by hundreds of metres. */
   function useMyLocation() {
     if (!('geolocation' in navigator)) {
       return toast('error', 'Location unavailable', 'Your browser does not support geolocation.');
     }
+    if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current);
     setLocating(true);
-    navigator.geolocation.getCurrentPosition(
+    let best: GeolocationCoordinates | null = null;
+
+    const finish = () => {
+      if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current);
+      watchId.current = null;
+      clearTimeout(timer);
+      setLocating(false);
+      if (!best) return;
+      const acc = Math.round(best.accuracy);
+      if (acc > 100) toast('warning', 'Location is approximate', `Only accurate to about ${acc} m. Drag the pin or tap the map on the exact spot.`);
+      else toast('success', 'Location found', `Accurate to about ${acc} m. Drag the pin if it's not quite right.`);
+    };
+    const timer = setTimeout(finish, 12000);
+
+    watchId.current = navigator.geolocation.watchPosition(
       (pos) => {
-        const { latitude, longitude, accuracy } = pos.coords;
-        setLat(latitude); setLng(longitude);
-        setPlace(`Near ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
-        toast('success', 'Location found', `Accurate to about ${Math.round(accuracy)} metres.`);
-        setLocating(false);
+        if (best && pos.coords.accuracy >= best.accuracy) return;
+        best = pos.coords;
+        setLat(best.latitude); setLng(best.longitude); setAccuracy(best.accuracy);
+        if (best.accuracy <= 20) finish();
       },
       (err) => {
+        if (best) return finish();
+        if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current);
+        watchId.current = null;
+        clearTimeout(timer);
         setLocating(false);
-        toast('error', 'Could not get location', err.message || 'Check location permissions and try again.');
+        toast('error', 'Could not get location', err.code === err.PERMISSION_DENIED
+          ? 'Location permission is blocked. Allow it in your browser settings, or tap the map instead.'
+          : err.message || 'Check location permissions and try again.');
       },
-      { enableHighAccuracy: true, timeout: 10000 },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 },
     );
   }
 
@@ -70,6 +143,7 @@ export function ReportPage() {
 
   function next() {
     if (step === 1 && (lat == null || lng == null)) return toast('warning', 'Pick a location', 'Tap on the map or use "Use my location".');
+    if (step === 1 && !place.trim()) return toast('warning', 'Add the road name', 'Tell the crew which road or landmark it is near.');
     if (step === 2 && (!type || !sev || !title)) return toast('warning', 'Missing details', 'Choose a type, severity, and title.');
     setStep(Math.min(3, step + 1));
   }
@@ -91,9 +165,9 @@ export function ReportPage() {
       }
       const created = await api.createDefect({
         title, description: desc, defect_type: type as DefectType, severity: sev as Severity,
-        road: place || 'Orange NSW', latitude: lat, longitude: lng, photo_url,
+        road: place.trim(), latitude: lat, longitude: lng, photo_url,
       }, userId);
-      toast('success', `Report submitted — ${created.id}`, 'Council will triage within one business day.');
+      toast('success', `Report submitted — ${created.id}`, 'Council will review it and assign a contractor.');
       nav('/my-reports');
     } catch (err: any) {
       toast('error', 'Could not submit report', err.message || 'Please try again.');
@@ -129,23 +203,50 @@ export function ReportPage() {
       {step === 1 && (
         <section className="card p-6">
           <h3 className="mb-2">Where is it?</h3>
-          <p className="text-[13.5px] text-muted mb-5">Tap the map to drop a pin, or use your device location.</p>
+          <p className="text-[13.5px] text-muted mb-5">Tap the map to drop a pin, or use your device location. You can drag the pin to the exact spot.</p>
           <div className="mb-4">
-            <DefectMap defects={[]} height={400} onPick={(la, ln) => {
-              setLat(la); setLng(ln);
-              setPlace(`Near ${la.toFixed(4)}, ${ln.toFixed(4)}`);
-            }} pickedLat={lat} pickedLng={lng} legend={false} />
+            <DefectMap defects={[]} height={400} onPick={pickSpot}
+                       pickedLat={lat} pickedLng={lng} legend={false} />
           </div>
           <div className="flex flex-wrap gap-3 items-end">
             <div className="flex-1 min-w-[220px] grid gap-1.5">
-              <label className="label" htmlFor="place-field">Nearest road or landmark</label>
-              <input id="place-field" className="input" value={place} onChange={(e) => setPlace(e.target.value)}
+              <label className="label" htmlFor="place-field">
+                Street address or landmark <span className="text-rd-600">*</span>
+                {lookingUp && <span className="ml-2 font-normal text-muted">Finding address…</span>}
+              </label>
+              <input id="place-field" className="input" value={place} onChange={(e) => { setPlace(e.target.value); placeAuto.current = !e.target.value.trim(); }}
                      placeholder="e.g. Summer St near Anson St, Orange" />
             </div>
             <button type="button" onClick={useMyLocation} disabled={locating} className="btn btn-secondary">
-              <IconCrosshair size={16} /> {locating ? 'Locating…' : 'Use my location'}
+              <IconCrosshair size={16} /> {locating ? 'Getting exact location…' : 'Use my location'}
             </button>
           </div>
+          {lat != null && lng != null && (
+            <div className="mt-2 text-[12px] text-muted mono">
+              Pin: {lat.toFixed(5)}, {lng.toFixed(5)}{accuracy != null && ` · ±${Math.round(accuracy)} m`}
+            </div>
+          )}
+          {nearby.length > 0 && (
+            <div className="mt-5 p-4 rounded-lg bg-am-50 border border-am-500/25">
+              <div className="text-[13.5px] font-bold text-am-700 flex items-center gap-2"><IconAlert size={15} /> Already reported nearby?</div>
+              <p className="text-[12.5px] text-am-700 mt-1 mb-3">
+                {nearby.length === 1 ? 'There is an open report' : `There are ${nearby.length} open reports`} within {NEARBY_M} m of this spot.
+                If it's the same problem, open it and tap <b>Back this report</b> — that raises its priority instead of creating a duplicate.
+              </p>
+              <div className="grid gap-2">
+                {nearby.map(({ d, m }) => (
+                  <Link key={d.id} to={`/defect/${d.id}`} className="flex items-center gap-3 p-2.5 rounded-lg bg-surface border border-border hover:border-border-strong hover:no-underline">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-semibold text-ink truncate">{d.title}</div>
+                      <div className="text-[11.5px] text-muted truncate">{d.road} · {Math.round(m)} m away · {d.votes} backing</div>
+                    </div>
+                    <SeverityChip level={d.severity} />
+                    <StatusBadge status={d.status} verified={!!d.verified_at} />
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
       )}
 

@@ -4,7 +4,7 @@ import { IconCheckCircle, IconAlert, IconBell, IconX } from '../lib/icons';
 export function ToastHost() {
   const { toasts, dismissToast } = useUI();
   return (
-    <div className="fixed top-4 right-4 z-[9500] grid gap-2.5 w-[340px] max-w-[calc(100vw-2rem)]">
+    <div className="fixed top-[76px] right-4 z-[9500] grid gap-2.5 w-[340px] max-w-[calc(100vw-2rem)]" role="status" aria-live="polite">
       {toasts.map(t => {
         const color = t.kind === 'success' ? 'var(--em-600, #059669)'
                     : t.kind === 'error'   ? '#DC2626'

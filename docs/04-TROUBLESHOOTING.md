@@ -34,7 +34,7 @@ The app runs in demo mode when credentials aren't set. Either:
 
 ## "Row-level security policy violation" from Supabase
 
-Your user's profile role doesn't match what the endpoint expects. Run `04-link-users.sql` again after creating the demo users.
+Your user's profile role doesn't match what the endpoint expects. Set the right role on the profile, e.g. `update public.profiles set role = 'admin' where lower(email) = 'council@gmail.com';`, then log out and back in.
 
 ## TypeScript errors on build
 

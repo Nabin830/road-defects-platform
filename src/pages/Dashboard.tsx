@@ -24,19 +24,18 @@ export function DashboardPage() {
   const c = {
     total: mine.length,
     pending: mine.filter(d => d.status === 'pending').length,
-    active: mine.filter(d => d.status === 'assigned' || d.status === 'progress').length,
-    done: mine.filter(d => d.status === 'completed').length,
+    active: mine.filter(d => d.status === 'assigned' || d.status === 'progress' || (d.status === 'completed' && !d.verified_at)).length,
+    done: mine.filter(d => d.status === 'completed' && d.verified_at).length,
   };
 
-  const name = profile?.name || 'there';
-  const firstName = name.split(' ')[0];
+  const firstName = profile?.name?.trim().split(' ')[0];
 
   return (
     <main className="w-full max-w-[1280px] mx-auto px-6 py-8">
       <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
         <div>
           <span className="section-label">Citizen dashboard</span>
-          <h1 className="mt-1">Welcome back, {firstName}</h1>
+          <h1 className="mt-1">{firstName ? `Welcome back, ${firstName}` : 'Welcome back'}</h1>
           <p className="text-muted mt-1">Track your reports and see what's happening on the roads near you.</p>
         </div>
         <div className="flex gap-2">
@@ -46,10 +45,10 @@ export function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <StatCard k="My reports" v={c.total} d="all time" icon={<IconFile size={17} />} color="#1E40AF" bg="#EFF6FF" />
+        <StatCard k="My reports" v={c.total} d="all time" icon={<IconFile size={17} />} color="var(--brand-text)" bg="var(--brand-soft)" />
         <StatCard k="Pending" v={c.pending} d="awaiting triage" icon={<IconClock size={17} />} color="#B45309" bg="#FFFBEB" />
-        <StatCard k="Active repairs" v={c.active} d="assigned or in progress" icon={<IconAlert size={17} />} color="#6D28D9" bg="#F5F3FF" />
-        <StatCard k="Completed" v={c.done} d="thanks for reporting!" icon={<IconCheckCircle size={17} />} color="#047857" bg="#ECFDF5" />
+        <StatCard k="Active repairs" v={c.active} d="being worked on" icon={<IconAlert size={17} />} color="#6D28D9" bg="#F5F3FF" />
+        <StatCard k="Completed" v={c.done} d="verified by council" icon={<IconCheckCircle size={17} />} color="#047857" bg="#ECFDF5" />
       </div>
 
       <div className="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-6">
@@ -75,7 +74,7 @@ export function DashboardPage() {
                       <div className="text-[12.5px] text-muted mt-0.5 truncate">{d.road} · {relativeTime(d.reported_at)}</div>
                     </div>
                     <SeverityChip level={d.severity} />
-                    <StatusBadge status={d.status} />
+                    <StatusBadge status={d.status} verified={!!d.verified_at} />
                   </Link>
                 ))}
               </div>

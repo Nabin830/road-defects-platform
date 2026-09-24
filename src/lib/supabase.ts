@@ -10,7 +10,7 @@ export const HAS_SUPABASE = Boolean(
 );
 
 export const supabase: SupabaseClient = HAS_SUPABASE
-  ? createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true } })
+  ? createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' } })
   : (createClient('https://placeholder.supabase.co', 'placeholder', { auth: { persistSession: false } }));
 
 if (!HAS_SUPABASE) {

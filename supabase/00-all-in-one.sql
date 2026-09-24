@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════
--- Road Defects Assessment Platform — ALL-IN-ONE Supabase Setup
+-- RoadFix — ALL-IN-ONE Supabase Setup
 --
 -- Paste this whole file into Supabase SQL Editor and click "Run".
 --
@@ -8,11 +8,12 @@
 --                       triggers and policies in the public schema
 --   STEP 1. SCHEMA    — tables, indexes, triggers
 --   STEP 2. POLICIES  — row level security
---   STEP 3. FOLLOWERS — "follow updates" table
+--   STEP 3. FOLLOWERS — "follow updates" table + in-app notifications
 --   STEP 4. STORAGE   — defect-photos bucket + policies
---   STEP 5. SEED      — contractors, 17 defects, repair updates
---   STEP 6. USERS     — re-creates profiles for existing auth users and
---                       links the demo accounts (safe if they don't exist)
+--   STEP 5. USERS     — re-creates profiles for existing auth users and
+--                       makes council@gmail.com an admin
+--
+-- No dummy data: contractors, defects, updates etc. all start EMPTY.
 --
 -- ⚠️  STEP 0 IS DESTRUCTIVE. Every table in the public schema and all
 --     of its data is permanently deleted. There is no undo.
@@ -72,6 +73,9 @@ begin
     execute format('drop function if exists %s cascade', r.sig);
   end loop;
 end $$;
+
+-- Delete the old demo login accounts (citizen@/contractor@/admin@example.com)
+delete from auth.users where lower(email) like '%@example.com';
 
 -- Optional: also delete every user account (Authentication → Users).
 -- Uncomment ONLY if you want all users gone and plan to sign up again.
@@ -134,6 +138,10 @@ create table public.defects (
   reject_reason  text,
   reported_by    uuid references public.profiles(id) on delete set null,
   contractor_id  uuid references public.contractors(id) on delete set null,
+  accepted_at    timestamptz,                         -- set when the contractor accepts the job
+  verified_at    timestamptz,                         -- set when council verifies the completed repair
+  work_instructions text,                             -- council's work order: what the contractor must do
+  due_at         timestamptz,                         -- council-set fix-by date (overrides severity default)
   reported_at    timestamptz not null default now(),
   updated_at     timestamptz not null default now()
 );
@@ -182,27 +190,72 @@ create trigger trg_profiles_touch before update on public.profiles
 create trigger trg_defects_touch before update on public.defects
   for each row execute function public.touch_updated_at();
 
--- ─── AUTO-CREATE profile on signup ────────────────────────────────
-create or replace function public.handle_new_user()
+-- ─── Only council can verify, and verified jobs are locked ────────
+-- auth.uid() is null in the SQL Editor, so manual fixes there still work.
+create or replace function public.guard_verification()
 returns trigger as $$
 begin
-  insert into public.profiles (id, email, name, role, suburb)
-  values (
-    new.id,
-    new.email,
-    coalesce(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
-    coalesce(new.raw_user_meta_data->>'role', 'citizen'),
-    new.raw_user_meta_data->>'suburb'
-  )
+  -- Vote-count refreshes are always allowed
+  if (to_jsonb(new) - 'votes' - 'updated_at') = (to_jsonb(old) - 'votes' - 'updated_at') then
+    return new;
+  end if;
+  if auth.uid() is not null and not public.is_admin() then
+    if old.verified_at is not null then
+      raise exception 'This repair has been verified and closed by council';
+    end if;
+    if new.verified_at is distinct from old.verified_at then
+      raise exception 'Only council can verify a repair';
+    end if;
+    if new.work_instructions is distinct from old.work_instructions
+       or new.due_at is distinct from old.due_at then
+      raise exception 'Only council can set the work order and fix-by date';
+    end if;
+  end if;
+  return new;
+end $$ language plpgsql security definer set search_path = public;
+
+create trigger trg_defects_guard_verification before update on public.defects
+  for each row execute function public.guard_verification();
+
+-- ─── AUTO-CREATE profile on signup ────────────────────────────────
+-- "Summit Asphalt" → "SA"
+create or replace function public.initials(p_name text)
+returns text as $$
+  select upper(coalesce(nullif(
+    string_agg(left(w, 1), '' order by ord), ''), '?'))
+    from (select w, ord from unnest(regexp_split_to_array(trim(p_name), '\s+')) with ordinality as t(w, ord)
+           where w <> '' limit 2) x;
+$$ language sql immutable;
+
+-- Only 'citizen' or 'contractor' can be chosen at signup; admin is granted by SQL.
+-- Contractors automatically get their own row in public.contractors so the
+-- council can assign work to them straight away.
+create or replace function public.handle_new_user()
+returns trigger as $$
+declare
+  v_name   text := coalesce(nullif(trim(new.raw_user_meta_data->>'name'), ''), split_part(new.email, '@', 1));
+  v_role   text := case when new.raw_user_meta_data->>'role' = 'contractor' then 'contractor' else 'citizen' end;
+  v_con_id uuid;
+begin
+  if v_role = 'contractor' then
+    insert into public.contractors (name, abbr)
+    values (v_name, public.initials(v_name))
+    returning id into v_con_id;
+  end if;
+
+  insert into public.profiles (id, email, name, role, suburb, contractor_id)
+  values (new.id, new.email, v_name, v_role, new.raw_user_meta_data->>'suburb', v_con_id)
   on conflict (id) do nothing;
   return new;
-end $$ language plpgsql security definer;
+end $$ language plpgsql security definer set search_path = public;
 
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
 -- ─── VOTE COUNTER (keeps defects.votes in sync) ───────────────────
+-- security definer: citizens can't edit defects directly, but their vote
+-- still has to update the count.
 create or replace function public.recount_votes()
 returns trigger as $$
 begin
@@ -210,7 +263,7 @@ begin
      set votes = (select count(*) from public.votes where defect_id = coalesce(new.defect_id, old.defect_id))
    where id = coalesce(new.defect_id, old.defect_id);
   return null;
-end $$ language plpgsql;
+end $$ language plpgsql security definer set search_path = public;
 
 create trigger trg_votes_recount after insert or delete on public.votes
   for each row execute function public.recount_votes();
@@ -248,16 +301,105 @@ returns uuid as $$
   select contractor_id from public.profiles where id = auth.uid();
 $$ language sql stable security definer;
 
+-- ─── Contractor declines an assigned job ──────────────────────────
+-- Sends the defect back to 'pending' (unassigned) so the council can
+-- pick another contractor. Runs as definer because the contractor's own
+-- update policy doesn't allow clearing contractor_id.
+create or replace function public.decline_assignment(p_defect_id text, p_reason text)
+returns void as $$
+begin
+  if not public.is_contractor() then
+    raise exception 'Only contractors can decline jobs';
+  end if;
+
+  update public.defects
+     set status = 'pending', contractor_id = null, accepted_at = null, progress = 0
+   where id = p_defect_id
+     and contractor_id = public.my_contractor_id()
+     and status = 'assigned';
+
+  if not found then
+    raise exception 'This job is not assigned to you or has already started';
+  end if;
+
+  insert into public.repair_updates (defect_id, action, note, progress, actor_id, actor_role)
+  values (p_defect_id, 'Contractor declined', nullif(trim(p_reason), ''), 0, auth.uid(), 'contractor');
+end $$ language plpgsql security definer set search_path = public;
+
+grant execute on function public.decline_assignment(text, text) to authenticated;
+
+-- ─── Council changes someone's role (People page) ─────────────────
+-- Making someone a contractor links them to a company — an existing one, or a
+-- new one named after them. Council can't remove the last admin.
+create or replace function public.admin_set_role(p_user uuid, p_role text, p_contractor uuid default null)
+returns void as $$
+declare
+  v_name text;
+  v_con  uuid := p_contractor;
+begin
+  if not public.is_admin() then
+    raise exception 'Only council can change roles';
+  end if;
+  if p_role not in ('citizen', 'contractor', 'admin') then
+    raise exception 'Unknown role %', p_role;
+  end if;
+  if p_role <> 'admin'
+     and exists (select 1 from public.profiles where id = p_user and role = 'admin')
+     and (select count(*) from public.profiles where role = 'admin') <= 1 then
+    raise exception 'There must be at least one council admin';
+  end if;
+
+  if p_role = 'contractor' then
+    if v_con is null then
+      select contractor_id into v_con from public.profiles where id = p_user;
+    end if;
+    if v_con is null then
+      select name into v_name from public.profiles where id = p_user;
+      insert into public.contractors (name, abbr) values (v_name, public.initials(v_name)) returning id into v_con;
+    end if;
+  else
+    v_con := null;
+  end if;
+
+  update public.profiles set role = p_role, contractor_id = v_con where id = p_user;
+  if not found then raise exception 'User not found'; end if;
+end $$ language plpgsql security definer set search_path = public;
+
+grant execute on function public.admin_set_role(uuid, text, uuid) to authenticated;
+
+-- Same rule however the row is changed
+create or replace function public.guard_last_admin()
+returns trigger as $$
+begin
+  if old.role = 'admin' and new.role <> 'admin'
+     and not exists (select 1 from public.profiles where role = 'admin' and id <> old.id) then
+    raise exception 'There must be at least one council admin';
+  end if;
+  return new;
+end $$ language plpgsql security definer set search_path = public;
+
+create trigger trg_profiles_last_admin before update of role on public.profiles
+  for each row execute function public.guard_last_admin();
+
 -- ─── PROFILES ─────────────────────────────────────────────────────
-create policy "Profiles: anyone signed-in can read"
+-- Profiles hold emails and phone numbers: you see your own, council sees everyone's
+create policy "Profiles: users read their own"
   on public.profiles for select
-  using (auth.role() = 'authenticated');
+  using (auth.uid() = id);
+
+create policy "Profiles: council reads all"
+  on public.profiles for select
+  using (public.is_admin());
 
 create policy "Profiles: users update their own"
   on public.profiles for update
   using (auth.uid() = id)
-  with check (auth.uid() = id and role = (select role from public.profiles where id = auth.uid()));
-  -- prevents a user from changing their own role
+  with check (
+    auth.uid() = id
+    and role = (select role from public.profiles where id = auth.uid())
+    and contractor_id is not distinct from (select contractor_id from public.profiles where id = auth.uid())
+  );
+  -- users can edit their name/phone/suburb, but not their role or which company they belong to
 
 create policy "Profiles: admins update anyone"
   on public.profiles for update
@@ -272,6 +414,12 @@ create policy "Contractors: admins can write"
   using (public.is_admin())
   with check (public.is_admin());
 
+-- A contractor can rename their own company (Profile & settings page)
+create policy "Contractors: update own company"
+  on public.contractors for update
+  using (id = public.my_contractor_id())
+  with check (id = public.my_contractor_id());
+
 -- ─── DEFECTS ──────────────────────────────────────────────────────
 create policy "Defects: everyone can read"
   on public.defects for select using (true);
@@ -283,11 +431,12 @@ create policy "Defects: authenticated users can create"
 create policy "Defects: reporter can edit while pending"
   on public.defects for update
   using (auth.uid() = reported_by and status = 'pending')
-  with check (auth.uid() = reported_by);
+  with check (auth.uid() = reported_by and status = 'pending' and contractor_id is null);
 
 create policy "Defects: contractors update assigned work"
   on public.defects for update
-  using (public.is_contractor() and contractor_id = public.my_contractor_id());
+  using (public.is_contractor() and contractor_id = public.my_contractor_id())
+  with check (contractor_id = public.my_contractor_id() and status in ('assigned', 'progress', 'completed'));
 
 create policy "Defects: admins can do anything"
   on public.defects for all
@@ -337,6 +486,101 @@ create policy "Followers: users manage their own"
   with check (auth.uid() = user_id);
 
 
+-- ─── NOTIFICATIONS (bell in the header) ───────────────────────────
+-- One row per recipient, created automatically whenever a repair update
+-- is added to a defect.
+create table public.notifications (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references public.profiles(id) on delete cascade,
+  defect_id    text references public.defects(id) on delete cascade,
+  defect_title text,
+  kind         text not null default 'update',     -- report/assigned/accepted/declined/progress/complete/verified/rework/rejected/update
+  title        text not null,
+  body         text,
+  read_at      timestamptz,
+  created_at   timestamptz not null default now()
+);
+
+create index idx_notifications_user on public.notifications(user_id, created_at desc);
+
+alter table public.notifications enable row level security;
+
+create policy "Notifications: users read their own"
+  on public.notifications for select using (auth.uid() = user_id);
+
+create policy "Notifications: users mark their own read"
+  on public.notifications for update
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "Notifications: users delete their own"
+  on public.notifications for delete using (auth.uid() = user_id);
+
+-- Who hears about an update:
+--   the reporter, followers, the assigned contractor's accounts, and council
+--   (council only for updates made by citizens/contractors) — never the person who acted.
+create or replace function public.notify_on_update()
+returns trigger as $$
+declare
+  d      public.defects%rowtype;
+  v_kind text;
+begin
+  select * into d from public.defects where id = new.defect_id;
+  if not found then return new; end if;
+
+  v_kind := case new.action
+    when 'Report submitted'    then 'report'
+    when 'Assigned'            then 'assigned'
+    when 'Contractor accepted' then 'accepted'
+    when 'Contractor declined' then 'declined'
+    when 'Work started'        then 'progress'
+    when 'Progress update'     then 'progress'
+    when 'Repair complete'     then 'complete'
+    when 'Verified by council' then 'verified'
+    when 'Rework requested'    then 'rework'
+    when 'Report rejected'     then 'rejected'
+    else 'update' end;
+
+  insert into public.notifications (user_id, defect_id, defect_title, kind, title, body)
+  select r.uid, d.id, d.title, v_kind,
+         case
+           when v_kind = 'report'   then 'New defect reported'
+           when v_kind = 'assigned' and r.is_contractor then 'New job assigned to you'
+           when v_kind = 'assigned' then 'Contractor assigned'
+           when v_kind = 'complete' and r.is_admin      then 'Repair ready for verification'
+           when v_kind = 'rework'   and r.is_contractor then 'Council requested rework'
+           else new.action
+         end,
+         new.note
+    from (
+      select p.id as uid,
+             bool_or(p.role = 'admin') as is_admin,
+             bool_or(p.role = 'contractor' and p.contractor_id = d.contractor_id) as is_contractor
+        from public.profiles p
+       where p.id = d.reported_by
+          or p.id in (select f.user_id from public.followers f where f.defect_id = d.id)
+          or (p.role = 'contractor' and d.contractor_id is not null and p.contractor_id = d.contractor_id)
+          or (p.role = 'admin' and coalesce(new.actor_role, '') <> 'admin')
+       group by p.id
+    ) r
+   where r.uid is distinct from new.actor_id;
+
+  return new;
+end $$ language plpgsql security definer set search_path = public;
+
+create trigger trg_repair_updates_notify after insert on public.repair_updates
+  for each row execute function public.notify_on_update();
+
+-- Live updates for the bell (Supabase Realtime), when available
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (select 1 from pg_publication_tables
+                      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'notifications') then
+    alter publication supabase_realtime add table public.notifications;
+  end if;
+end $$;
+
+
 -- ═══════════════════════════════════════════════════════════════════
 -- STEP 4. PHOTO STORAGE
 -- ═══════════════════════════════════════════════════════════════════
@@ -370,52 +614,7 @@ create policy "defect-photos: owner delete"
 
 
 -- ═══════════════════════════════════════════════════════════════════
--- STEP 5. SEED DATA
--- ═══════════════════════════════════════════════════════════════════
-
--- ─── CONTRACTORS ──────────────────────────────────────────────────
-insert into public.contractors (id, name, abbr, crew_size, rating) values
-  ('11111111-1111-1111-1111-111111111111', 'Central West Road Services', 'CW', 6, 4.8),
-  ('22222222-2222-2222-2222-222222222222', 'Cabonne Civil',              'CC', 4, 4.4),
-  ('33333333-3333-3333-3333-333333333333', 'Summit Asphalt',             'SA', 8, 4.9),
-  ('44444444-4444-4444-4444-444444444444', 'Orange City Works Crew',     'OW', 5, 4.2);
-
--- ─── DEFECTS ──────────────────────────────────────────────────────
-insert into public.defects (id, title, description, defect_type, severity, status, road, suburb, latitude, longitude, depth, width, votes, progress, contractor_id, reported_at) values
-  ('RD-2041','Deep pothole in eastbound lane','Large pothole has opened in the eastbound lane approaching the Anson St lights. Water pooling in it after Tuesday rain. Two cars ahead of me hit it hard. Vehicle damage risk — this is on a bus route.','pothole','critical','progress','Summer St at Anson St','Orange',-33.28362,149.09902,'180 mm','0.9 m',23,60,'33333333-3333-3333-3333-333333333333', now() - interval '2 days'),
-  ('RD-2038','Sealed edge collapsing on shoulder','Bitumen edge has broken away along a 22 metre stretch on the southern shoulder. Heavy truck traffic is widening it daily.','edge','high','assigned','Mitchell Hwy, 1.4 km W of Lucknow','Lucknow',-33.31290,149.16240,'90 mm','0.4 m × 22 m',11,0,'11111111-1111-1111-1111-111111111111', now() - interval '4 days'),
-  ('RD-2033','Stormwater pooling across both lanes','The grate is blocked with leaf litter so runoff crosses the full carriageway after any decent rain. Visibility of the kerb line is gone at night.','flooding','high','pending','Ophir St near Warrendine St','Orange',-33.27698,149.09612,'—','12 m',17,0,null, now() - interval '1 day'),
-  ('RD-2029','Longitudinal cracking, 40 m section','Series of parallel cracks running with the direction of travel. Widening since winter.','crack','medium','completed','Byng St near Lords Place','Orange',-33.28118,149.10140,'25 mm','40 m',6,100,'33333333-3333-3333-3333-333333333333', now() - interval '21 days'),
-  ('RD-2026','Pothole cluster outside primary school','Three potholes in the drop-off zone. Parents are swerving into the opposing lane to avoid them at pickup time.','pothole','critical','assigned','McLachlan St at Kite St','Orange',-33.28902,149.09338,'140 mm','3 potholes',38,0,'11111111-1111-1111-1111-111111111111', now() - interval '3 days'),
-  ('RD-2024','Give way sign knocked flat','Sign post sheared at the base, likely struck overnight. Intersection currently uncontrolled.','signage','critical','completed','Bathurst Rd at Hill St','Orange',-33.29470,149.11180,'—','—',14,100,'44444444-4444-4444-4444-444444444444', now() - interval '9 days'),
-  ('RD-2021','Centre line completely worn away','Line marking is invisible in wet conditions along the whole stretch past the showground turnoff.','marking','medium','progress','Molong Rd, Orange to Borenore','Orange',-33.26830,149.07420,'—','2.1 km',9,35,'22222222-2222-2222-2222-222222222222', now() - interval '12 days'),
-  ('RD-2018','Shallow pothole near roundabout','Minor surface loss on the approach to the roundabout.','pothole','low','completed','Peisley St at Kite St','Orange',-33.28770,149.10480,'40 mm','0.3 m',3,100,'33333333-3333-3333-3333-333333333333', now() - interval '27 days'),
-  ('RD-2015','Pavement subsidence over trench','Old service trench has settled. Noticeable dip that bottoms out low vehicles.','subside','high','progress','Icely Rd near Coronation Dr','Orange',-33.29510,149.08130,'110 mm dip','6 m',12,80,'33333333-3333-3333-3333-333333333333', now() - interval '8 days'),
-  ('RD-2012','Fallen branch blocking bike lane','Large gum branch down across the marked bike lane after Thursday winds.','debris','medium','completed','Forest Rd near Emmaville Ln','Orange',-33.27040,149.10810,'—','—',5,100,'44444444-4444-4444-4444-444444444444', now() - interval '15 days'),
-  ('RD-2009','Crocodile cracking, full lane width','Interconnected cracking pattern suggesting base failure rather than a surface issue.','crack','high','assigned','Clergate Rd, 600 m N of Northern Distributor','Orange',-33.25310,149.09010,'30 mm','18 m',8,0,'11111111-1111-1111-1111-111111111111', now() - interval '6 days'),
-  ('RD-2006','Drain grate sitting 60 mm proud','Grate has lifted above the road surface. Hazard for cyclists using the kerb lane.','flooding','medium','pending','Lords Place at Summer St','Orange',-33.28558,149.10270,'60 mm','0.6 m',4,0,null, now() - interval '1 day'),
-  ('RD-2001','Pothole on heritage streetscape','Pothole outside the bakery. High pedestrian and tourist traffic on weekends.','pothole','medium','assigned','Pym St, Millthorpe','Millthorpe',-33.44520,149.19320,'75 mm','0.5 m',19,0,'22222222-2222-2222-2222-222222222222', now() - interval '5 days'),
-  ('RD-1998','Washout after culvert overflow','Creek overtopped the culvert and scoured out the downstream shoulder. One lane effectively unusable.','flooding','critical','progress','Cargo Rd near Borenore Ck','Borenore',-33.27620,148.94510,'300 mm scour','4 m',16,25,'11111111-1111-1111-1111-111111111111', now() - interval '3 days'),
-  ('RD-1995','Worn pedestrian crossing markings','Zebra stripes are about half worn through outside the medical centre.','marking','low','pending','March St at Sale St','Orange',-33.27912,149.09960,'—','—',7,0,null, now() - interval '2 days'),
-  ('RD-1992','Gravel spill across intersection','Truck lost load of road base. Slippery for motorcycles.','debris','high','completed','Adelaide St, Blayney','Blayney',-33.53310,149.25340,'—','—',6,100,'22222222-2222-2222-2222-222222222222', now() - interval '11 days'),
-  ('RD-1989','Sunken manhole in wheel path','Manhole cover sits well below the resurfaced pavement.','subside','medium','assigned','Woodward St near Summer St','Orange',-33.28812,149.10010,'50 mm','0.7 m',5,0,'44444444-4444-4444-4444-444444444444', now() - interval '7 days');
-
--- ─── REPAIR UPDATES ───────────────────────────────────────────────
-insert into public.repair_updates (defect_id, action, note, progress, actor_role, created_at) values
-  ('RD-2041','Report submitted','Photo and location captured on Summer St, eastbound lane.',0,'citizen', now() - interval '2 days'),
-  ('RD-2041','Triaged as Critical','Bus route and vehicle damage risk. 24 hour SLA applied. Temporary cold-mix authorised.',0,'admin', now() - interval '2 days'),
-  ('RD-2041','Assigned to crew','Crew 2 scheduled for the 6am window to avoid peak traffic. Traffic control booked.',10,'contractor', now() - interval '1 day'),
-  ('RD-2041','Cold-mix patch placed','Interim patch down and compacted. Hazard removed. Permanent hot-mix repair scheduled Thursday once the saw cut is done.',60,'contractor', now() - interval '19 hours'),
-  ('RD-2029','Report submitted','Cracking along Byng St.',0,'citizen', now() - interval '21 days'),
-  ('RD-2029','Triaged as Medium','Scheduled into the crack-sealing program.',0,'admin', now() - interval '19 days'),
-  ('RD-2029','Assigned','Bundled with three nearby jobs.',15,'contractor', now() - interval '14 days'),
-  ('RD-2029','Crack sealing underway','Routed and sealed 28 of 40 metres.',65,'contractor', now() - interval '9 days'),
-  ('RD-2029','Repair complete','Full 40 m sealed and swept. Site cleared.',100,'contractor', now() - interval '6 days'),
-  ('RD-2029','Inspected and closed','Passed post-works inspection. Defect closed.',100,'admin', now() - interval '5 days');
-
-
--- ═══════════════════════════════════════════════════════════════════
--- STEP 6. USERS
+-- STEP 5. USERS
 -- ═══════════════════════════════════════════════════════════════════
 
 -- Re-create a profile for every account that already exists in
@@ -424,35 +623,28 @@ insert into public.profiles (id, email, name, role, suburb)
 select u.id,
        u.email,
        coalesce(u.raw_user_meta_data->>'name', split_part(u.email, '@', 1)),
-       coalesce(u.raw_user_meta_data->>'role', 'citizen'),
+       case when u.raw_user_meta_data->>'role' = 'contractor' then 'contractor' else 'citizen' end,
        u.raw_user_meta_data->>'suburb'
   from auth.users u
  where u.email is not null
 on conflict (id) do nothing;
 
--- Link demo accounts to their roles. Does nothing if these accounts
--- haven't been signed up yet — sign them up in the app, then re-run
--- just this STEP 6 section.
---   citizen@example.com / contractor@example.com / admin@example.com  (password: demo1234)
-update public.profiles
-   set role = 'admin', name = 'Helen Osei', suburb = 'Orange City Council'
- where email = 'admin@example.com';
+-- Give every existing contractor account its own contractors row
+do $$
+declare
+  p record;
+  v_id uuid;
+begin
+  for p in select id, name from public.profiles where role = 'contractor' and contractor_id is null loop
+    insert into public.contractors (name, abbr) values (p.name, public.initials(p.name)) returning id into v_id;
+    update public.profiles set contractor_id = v_id where id = p.id;
+  end loop;
+end $$;
 
+-- Council admin account
 update public.profiles
-   set role = 'contractor',
-       name = 'Dev Raghunath',
-       suburb = 'Summit Asphalt',
-       contractor_id = '33333333-3333-3333-3333-333333333333'
- where email = 'contractor@example.com';
-
-update public.profiles
-   set role = 'citizen', name = 'Alicia Moreau', suburb = 'Orange NSW 2800'
- where email = 'citizen@example.com';
-
--- Give the citizen some reports so "My reports" has data
-update public.defects
-   set reported_by = (select id from public.profiles where email = 'citizen@example.com')
- where id in ('RD-2041','RD-2033','RD-2029','RD-2021','RD-2018','RD-2012','RD-2006','RD-1995','RD-1989');
+   set role = 'admin', contractor_id = null
+ where lower(email) = 'council@gmail.com';
 
 -- ─── Confirm ──────────────────────────────────────────────────────
 select 'contractors'    as "table", count(*) as rows from public.contractors

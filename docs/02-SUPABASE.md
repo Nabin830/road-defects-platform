@@ -25,28 +25,61 @@ VITE_SUPABASE_ANON_KEY=eyJhbGc...
 
 ## 3. Run the SQL
 
-Open the **SQL Editor** in your Supabase dashboard and run each file in order:
+Open the **SQL Editor** in your Supabase dashboard, paste the whole of
+`supabase/00-all-in-one.sql` and click **Run**. That one file:
 
-| File | What it creates |
-|---|---|
-| `supabase/01-schema.sql` | Tables, indexes, triggers |
-| `supabase/02-policies.sql` | Row-level security policies |
-| `supabase/03-seed.sql` | 4 contractors + 17 real Orange NSW defects |
-| `supabase/04-link-users.sql` | Promotes demo signups to admin/contractor |
-| `supabase/05-followers.sql` | "Follow updates" table + RLS (powers the Follow button on a defect) |
-| `supabase/06-storage.sql` | `defect-photos` storage bucket + policies (powers real photo upload in the Report flow) |
+- **wipes** every previous table, function and policy in the `public` schema (and the old
+  `@example.com` demo accounts) — this deletes all existing data, there is no undo
+- creates the tables, indexes, triggers and row-level security policies
+- creates the `followers` table and the `defect-photos` storage bucket
+- recreates profiles for existing accounts and makes `council@gmail.com` an admin
 
-Run `05` and `06` even on a project that already ran `01`–`04` — they're additive and only needed once.
+No dummy data is inserted — contractors and defects start empty and are created from the app.
+Uploaded photo files are not removed by SQL; clear them in **Storage → defect-photos** if needed.
 
-### Linking a contractor account to a contractor company
+### Contractor accounts
 
-The `/contractor` page shows nothing until a contractor's `profiles.contractor_id` points at a row in
-`contractors`. For real (non-demo) contractor sign-ups, an admin needs to run, once per contractor user:
+When someone registers at `/register` choosing **"I'm a contractor"**, a row in `contractors` is
+created for them automatically and linked to their profile, so council can assign work to them
+immediately. Assigned jobs show **Accept job / Decline job** to the contractor; declining sends the
+defect back to council as unassigned (`pending`). When the contractor marks a job complete it
+shows as **Awaiting sign-off** until council clicks **Verify & close** (or **Send back for rework**);
+verified jobs are locked. Nobody can self-register as admin — grant it by SQL.
 
-```sql
-update public.profiles set contractor_id = '<contractor uuid from the contractors table>'
- where email = 'the-contractor@example.com';
-```
+### Notifications
+
+Every timeline update creates in-app notifications (the bell in the header) for the people involved:
+the reporter, anyone following the defect, the assigned contractor, and council (for resident and
+contractor actions). The person who made the update is never notified about their own action. The
+bell updates live through Supabase Realtime (the SQL adds `notifications` to the `supabase_realtime`
+publication) and also refreshes every minute.
+
+Note: the app uses hash URLs — e.g. `http://localhost:5173/#/login`, `#/admin`.
+
+### Password reset
+
+"Forgot password?" on the sign-in page emails a reset link. For the link to be accepted, add your app's
+address under **Authentication → URL Configuration → Redirect URLs**, e.g. `http://localhost:5173/**`
+(and your production URL when deployed). The link must be opened in the same browser that requested it.
+
+### Council pages
+
+- **People** (`#/admin/people`): change anyone's role (resident / contractor / council), link contractor
+  accounts to a company, and add or rename contractor companies. There is always at least one council
+  admin — the last one can't be demoted. Profiles (emails, phones) are visible only to their owner and council.
+- **Reports** (`#/admin/reports`): reports received vs repairs verified per month, median time to fix and to
+  assign, the share fixed within deadline, reports by type, and contractor performance — for the last 3, 6 or
+  12 months.
+
+### Other built-in rules
+
+- **Deadlines**: each open defect has a due date from its severity — critical 1 day, high 3–5 days
+  (overdue after 5), medium 7 days, low 10 days, counting every day including weekends — shown as
+  "Due in…" / "Overdue by…". Council can change severity, and can set its own "days to fix" when assigning.
+- **Repair photos**: contractors can attach a photo when posting an update or marking a job complete;
+  it appears on the timeline for council to check before verifying.
+- **Duplicates**: when reporting, open reports within 150 m of the pin are shown so residents can back
+  an existing report instead of filing a new one.
 
 ## 4. Disable email confirmation (for the demo)
 
@@ -54,21 +87,20 @@ update public.profiles set contractor_id = '<contractor uuid from the contractor
 
 This lets your demo users sign in without an email round-trip.
 
-## 5. Create the demo accounts
+## 5. Create the admin account
 
-**Authentication → Users → Add user** (create three):
+Sign up `council@gmail.com` in the app (or **Authentication → Users → Add user**), then re-run
+`supabase/00-all-in-one.sql` — or just this line — to make it an admin:
 
-| Email | Password | Purpose |
-|---|---|---|
-| `citizen@example.com` | `demo1234` | Citizen flow |
-| `contractor@example.com` | `demo1234` | Contractor kanban |
-| `admin@example.com` | `demo1234` | Admin dashboard |
+```sql
+update public.profiles set role = 'admin' where lower(email) = 'council@gmail.com';
+```
 
-Then run `04-link-users.sql` once — it promotes their profiles to the right roles.
+Log out and back in after changing a role.
 
 ## 6. Try it
 
-Restart `npm run dev` and sign in with any of the three accounts.
+Restart `npm run dev` and sign in as `council@gmail.com`.
 
 ## 7. What's real vs. what needs another service
 

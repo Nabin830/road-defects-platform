@@ -22,9 +22,9 @@ export const STATUS: Record<DefectStatus, { label: string; cls: string; color: s
 };
 
 export const SEVERITY: Record<Severity, { label: string; color: string; rank: number; sla: string }> = {
-  low:      { label: 'Low',      color: '#16A34A', rank: 1, sla: '20 business days' },
-  medium:   { label: 'Medium',   color: '#EAB308', rank: 2, sla: '10 business days' },
-  high:     { label: 'High',     color: '#EA580C', rank: 3, sla: '5 business days' },
+  low:      { label: 'Low',      color: '#16A34A', rank: 1, sla: '10 days' },
+  medium:   { label: 'Medium',   color: '#EAB308', rank: 2, sla: '7 days' },
+  high:     { label: 'High',     color: '#EA580C', rank: 3, sla: '3–5 days' },
   critical: { label: 'Critical', color: '#DC2626', rank: 4, sla: '24 hours' },
 };
 

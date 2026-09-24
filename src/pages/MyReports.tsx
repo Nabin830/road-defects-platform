@@ -13,7 +13,8 @@ export function MyReportsPage() {
 
   useEffect(() => { if (userId) api.myReports(userId).then(setMine).catch(() => {}); }, [userId]);
 
-  const shown = mine.filter(d => tab === 'all' ? true : tab === 'done' ? d.status === 'completed' : (d.status !== 'completed' && d.status !== 'rejected'));
+  const isDone = (d: Defect) => d.status === 'completed' && !!d.verified_at;
+  const shown = mine.filter(d => tab === 'all' ? true : tab === 'done' ? isDone(d) : (!isDone(d) && d.status !== 'rejected'));
 
   return (
     <main className="w-full max-w-[1280px] mx-auto px-6 py-8">
@@ -37,7 +38,7 @@ export function MyReportsPage() {
 
       {shown.length === 0 ? (
         <div className="card p-16 text-center">
-          <p className="text-muted mb-4">You haven't submitted any reports yet.</p>
+          <p className="text-muted mb-4">{mine.length === 0 ? "You haven't submitted any reports yet." : 'No reports in this tab.'}</p>
           <Link to="/report" className="btn btn-primary hover:no-underline"><IconPlus size={16} /> Report your first defect</Link>
         </div>
       ) : (

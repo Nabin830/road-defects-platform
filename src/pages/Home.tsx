@@ -6,6 +6,7 @@ import { DefectMap } from '../components/DefectMap';
 import { DefectCard } from '../components/DefectCard';
 import { IconArrow, IconPlus, IconMap, IconShield, IconTrend, IconChart, IconCamera, IconCrosshair, IconCheckCircle } from '../lib/icons';
 import type { Defect, PlatformStats } from '../lib/types';
+import { BrandLogo } from '../components/Brand';
 
 export function HomePage() {
   const [defects, setDefects] = useState<Defect[]>([]);
@@ -17,10 +18,10 @@ export function HomePage() {
   }, []);
 
   const stats = [
-    { v: ps ? ps.totalReported.toLocaleString() : '—', k: 'Defects reported', d: 'live on the platform' },
-    { v: ps ? ps.totalCompleted.toLocaleString() : '—', k: 'Repairs completed', d: ps ? `${ps.closureRate}% closure rate` : '' },
-    { v: ps ? ps.avgDaysToFirstAction.toString() : '—', k: 'Avg days to first action', d: 'from report to first status change' },
-    { v: ps ? ps.activeResidents.toLocaleString() : '—', k: 'Residents reporting', d: 'distinct reporters' },
+    { v: ps ? ps.totalReported.toLocaleString() : '—', k: 'Defects reported', d: 'all time' },
+    { v: ps ? ps.inProgress.toLocaleString() : '—', k: 'Being repaired', d: 'assigned or in progress' },
+    { v: ps ? ps.totalCompleted.toLocaleString() : '—', k: 'Repairs verified', d: ps ? `${ps.closureRate}% of all reports` : '' },
+    { v: ps ? ps.activeResidents.toLocaleString() : '—', k: 'Residents reporting', d: 'people who reported' },
   ];
 
   const recent = defects.slice(0, 3);
@@ -31,14 +32,14 @@ export function HomePage() {
       <section className="hero-grad py-16 md:py-24">
         <div className="w-full max-w-[1280px] mx-auto px-6 grid md:grid-cols-2 gap-10 items-center">
           <div>
-            <span className="section-label">NSW Central West · Live pilot</span>
+            <span className="section-label">Orange City Council</span>
             <h1 className="mt-4 text-[36px] md:text-[48px] font-extrabold tracking-tight leading-[1.05]">
-              Report road defects.<br />
+              Spot it. Report it. RoadFix it.<br />
               <span className="text-brand">Improve your community.</span>
             </h1>
             <p className="mt-5 text-[16px] text-ink-2 leading-relaxed max-w-xl">
-              Snap a photo, drop a pin. Council triage in one business day, real contractor
-              updates, and no more calling for status. Free for residents.
+              Snap a photo, drop a pin. Council reviews it, assigns a contractor, and you can
+              follow every step of the repair. Free for residents.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <Link to="/report" className="btn btn-primary btn-lg hover:no-underline">
@@ -49,7 +50,7 @@ export function HomePage() {
               </Link>
             </div>
             <div className="mt-6 flex items-center gap-6 text-[13px] text-muted">
-              <span className="flex items-center gap-1.5"><IconShield size={14} className="text-em-600" /> Encrypted & council-verified</span>
+              <span className="flex items-center gap-1.5"><IconShield size={14} className="text-em-600" /> Repairs verified by council</span>
               <span className="flex items-center gap-1.5"><IconCheckCircle size={14} className="text-em-600" /> Free for residents</span>
             </div>
           </div>
@@ -74,9 +75,9 @@ export function HomePage() {
         </div>
         <div className="grid md:grid-cols-3 gap-5">
           {[
-            { i: IconCamera, t: 'Snap and pin', d: 'Take a photo, drop a pin, add a sentence. Location and details get to council instantly.', c: '#1E40AF', bg: '#EFF6FF' },
-            { i: IconCrosshair, t: 'Triaged fast', d: 'Council reviews and grades severity within one business day. Contractor gets a job pack.', c: '#7C3AED', bg: '#F5F3FF' },
-            { i: IconCheckCircle, t: 'Repair done', d: 'Track progress with photos at every stage. Get notified when the job is complete.', c: '#059669', bg: '#ECFDF5' },
+            { i: IconCamera, t: 'Snap and pin', d: 'Take a photo, drop a pin, add a sentence. Location and details get to council instantly.', c: 'var(--brand-text)', bg: 'var(--brand-soft)' },
+            { i: IconCrosshair, t: 'Triaged fast', d: 'Council reviews the report and assigns it to a contractor, who accepts the job.', c: '#7C3AED', bg: '#F5F3FF' },
+            { i: IconCheckCircle, t: 'Repair verified', d: 'Follow progress updates on the timeline. Council checks the work before the job is closed.', c: '#059669', bg: '#ECFDF5' },
           ].map((s, i) => (
             <div key={i} className="card p-6">
               <div className="w-11 h-11 rounded-xl grid place-items-center mb-4" style={{ background: s.bg, color: s.c }}>
@@ -94,8 +95,8 @@ export function HomePage() {
         <section className="w-full max-w-[1280px] mx-auto px-6 py-14">
           <div className="flex items-end justify-between mb-6">
             <div>
-              <span className="section-label">Reported this week</span>
-              <h2 className="mt-2">Live from Orange &amp; Cabonne</h2>
+              <span className="section-label">Latest reports</span>
+              <h2 className="mt-2">Recently reported</h2>
             </div>
             <Link to="/defects" className="btn btn-ghost hover:no-underline">See all <IconArrow size={14} /></Link>
           </div>
@@ -108,8 +109,9 @@ export function HomePage() {
       {/* CTA */}
       <section className="w-full max-w-[1280px] mx-auto px-6 pb-16">
         <div className="card p-10 md:p-14 hero-grad text-center">
+          <BrandLogo className="h-12 md:h-14 mx-auto mb-8" />
           <h2 className="text-3xl md:text-4xl mb-3">See a hazard? Report it now.</h2>
-          <p className="text-ink-2 max-w-xl mx-auto mb-6">Takes 60 seconds. Someone in council will see it before lunch.</p>
+          <p className="text-ink-2 max-w-xl mx-auto mb-6">Takes about a minute. Council sees it straight away.</p>
           <Link to="/report" className="btn btn-primary btn-lg hover:no-underline">
             <IconPlus size={18} /> Report a defect
           </Link>

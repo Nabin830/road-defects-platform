@@ -1,0 +1,13 @@
+{
+  "name": "RoadFix",
+  "short_name": "RoadFix",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#201F1C",
+  "theme_color": "#201F1C",
+  "icons": [
+    { "src": "/favicon.png", "sizes": "256x256", "type": "image/png" },
+    { "src": "/app-icon-1024.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" },
+    { "src": "/maskable-icon.png", "sizes": "800x800", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -17,11 +17,17 @@ export function Timeline({ updates }: { updates: RepairUpdate[] }) {
             <div className="pt-1">
               <div className="text-[13.5px] font-semibold text-ink">{u.action}</div>
               <div className="text-[11.5px] text-muted mt-0.5">
-                {u.actor_role ? u.actor_role.charAt(0).toUpperCase() + u.actor_role.slice(1) : 'System'}
+                {u.actor_role === 'admin' ? 'Council' : u.actor_role === 'citizen' ? 'Resident' : u.actor_role === 'contractor' ? 'Contractor' : 'System'}
                 {' · '}
                 {relativeTime(u.created_at)}
               </div>
-              {u.note && <div className="text-[13px] text-ink-2 mt-1.5">{u.note}</div>}
+              {u.note && <div className="text-[13px] text-ink-2 mt-1.5 whitespace-pre-line">{u.note}</div>}
+              {u.photo_url && u.photo_url !== 'photo' && (
+                <a href={u.photo_url} target="_blank" rel="noreferrer" className="block mt-2 w-fit">
+                  <img src={u.photo_url} alt={`Photo: ${u.action}`} loading="lazy"
+                       className="max-h-[180px] max-w-full rounded-lg border border-border object-cover hover:opacity-90" />
+                </a>
+              )}
               {typeof u.progress === 'number' && u.progress > 0 && (
                 <div className="mt-2 flex items-center gap-3">
                   <div className="flex-1 prog"><i style={{ width: `${u.progress}%` }} /></div>

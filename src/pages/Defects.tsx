@@ -6,7 +6,7 @@ import { DefectCard } from '../components/DefectCard';
 import { StatusBadge } from '../components/Badge';
 import { SeverityChip } from '../components/Severity';
 import { IconMap, IconGrid, IconTable, IconSearch, IconFilter } from '../lib/icons';
-import { TYPES, SEVERITY } from '../lib/constants';
+import { TYPES, SEVERITY, STATUS } from '../lib/constants';
 import type { Defect, DefectStatus, Severity, DefectType } from '../lib/types';
 import { Link } from 'react-router-dom';
 import { relativeTime } from '../lib/utils';
@@ -21,6 +21,7 @@ export function DefectsPage() {
   const [sevSet, setSevSet] = useState<Severity[]>([]);
   const [type, setType] = useState<DefectType | 'all'>('all');
   const [q, setQ] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => { api.listDefects({}, userId).then(setDefects).catch(() => {}); }, [userId]);
 
@@ -38,10 +39,11 @@ export function DefectsPage() {
     });
   }, [defects, status, sevSet, type, q]);
 
+  const activeFilters = (status !== 'all' ? 1 : 0) + sevSet.length + (type !== 'all' ? 1 : 0) + (q ? 1 : 0);
   const toggleSev = (s: Severity) => setSevSet(sevSet.includes(s) ? sevSet.filter(x => x !== s) : [...sevSet, s]);
 
   return (
-    <main className="w-full max-w-[1560px] mx-auto px-6 py-8">
+    <main className="w-full max-w-[1280px] mx-auto px-6 py-8">
       <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
         <div>
           <span className="section-label">Public defect map</span>
@@ -60,7 +62,14 @@ export function DefectsPage() {
 
       <div className="grid lg:grid-cols-[260px_minmax(0,1fr)] gap-5">
         {/* Filters */}
-        <aside className="card p-4 h-fit sticky top-[70px]">
+        <button onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters}
+                className="lg:hidden btn btn-secondary justify-between">
+          <span className="flex items-center gap-2"><IconFilter size={15} /> Filters
+            {activeFilters > 0 && <span className="px-1.5 rounded-full bg-brand text-brand-ink text-[11px]">{activeFilters}</span>}
+          </span>
+          <span className="text-muted text-xs">{showFilters ? 'Hide' : 'Show'}</span>
+        </button>
+        <aside className={`card p-4 h-fit lg:sticky lg:top-[84px] ${showFilters ? '' : 'hidden'} lg:block`}>
           <div className="flex items-center gap-2 mb-4">
             <IconFilter size={16} className="text-muted" />
             <h4>Filters</h4>
@@ -80,7 +89,7 @@ export function DefectsPage() {
               {(['all', 'pending', 'assigned', 'progress', 'completed', 'rejected'] as const).map(s => (
                 <button key={s} onClick={() => setStatus(s)}
                         className={`text-left px-2.5 py-1.5 rounded-md text-[13px] font-medium ${status === s ? 'bg-brand-soft text-brand font-semibold' : 'text-ink-2 hover:bg-surface-2'}`}>
-                  {s === 'all' ? 'All statuses' : s.charAt(0).toUpperCase() + s.slice(1)}
+                  {s === 'all' ? 'All statuses' : STATUS[s].label}
                 </button>
               ))}
             </div>
@@ -147,7 +156,7 @@ export function DefectsPage() {
                         <td className="px-4 py-3 text-ink-2">{d.road}</td>
                         <td className="px-4 py-3 text-ink-2">{TYPES.find(t => t.id === d.defect_type)?.label || d.defect_type}</td>
                         <td className="px-4 py-3"><SeverityChip level={d.severity} /></td>
-                        <td className="px-4 py-3"><StatusBadge status={d.status} /></td>
+                        <td className="px-4 py-3"><StatusBadge status={d.status} verified={!!d.verified_at} /></td>
                         <td className="px-4 py-3 text-muted">{relativeTime(d.reported_at)}</td>
                       </tr>
                     ))}

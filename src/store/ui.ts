@@ -25,7 +25,7 @@ interface UIState {
 let toastSeq = 0;
 
 export const useUI = create<UIState>((set, get) => ({
-  theme: (typeof localStorage !== 'undefined' && (localStorage.getItem('rdap-theme') as 'light' | 'dark')) || 'light',
+  theme: (typeof localStorage !== 'undefined' && ((localStorage.getItem('roadfix-theme') ?? localStorage.getItem('rdap-theme')) as 'light' | 'dark')) || 'light',
   sim: 'desktop',
   toasts: [],
   modal: null,
@@ -33,7 +33,7 @@ export const useUI = create<UIState>((set, get) => ({
   toggleTheme() { get().setTheme(get().theme === 'dark' ? 'light' : 'dark'); },
   setTheme(t) {
     document.documentElement.setAttribute('data-theme', t);
-    try { localStorage.setItem('rdap-theme', t); } catch {}
+    try { localStorage.setItem('roadfix-theme', t); localStorage.removeItem('rdap-theme'); } catch {}
     set({ theme: t });
   },
   setSim(s) {

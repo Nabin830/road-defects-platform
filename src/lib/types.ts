@@ -48,6 +48,10 @@ export interface Defect {
   reject_reason: string | null;
   reported_by: string | null;
   contractor_id: string | null;
+  accepted_at?: string | null;
+  verified_at?: string | null;
+  work_instructions?: string | null;   // council's work order: what the contractor must do
+  due_at?: string | null;              // council-set fix-by date (overrides the severity default)
   reported_at: string;
   updated_at: string;
   // Derived
@@ -105,7 +109,7 @@ export interface PlatformStats {
   totalReported: number;
   totalCompleted: number;
   closureRate: number;      // 0-100
-  avgDaysToFirstAction: number;
+  inProgress: number;       // assigned, in progress, or awaiting council sign-off
   activeResidents: number;
 }
 
@@ -137,6 +141,27 @@ export interface DBDefect {
   reject_reason: string | null;
   reported_by: string | null;
   contractor_id: string | null;
+  accepted_at?: string | null;
+  verified_at?: string | null;
+  work_instructions?: string | null;   // council's work order: what the contractor must do
+  due_at?: string | null;              // council-set fix-by date (overrides the severity default)
   reported_at: string;
   updated_at: string;
+}
+
+// ─── In-app notifications ─────────────────────────────────────────────
+export type NotificationKind =
+  | 'report' | 'assigned' | 'accepted' | 'declined' | 'progress'
+  | 'complete' | 'verified' | 'rework' | 'rejected' | 'update';
+
+export interface AppNotification {
+  id: string;
+  user_id: string;
+  defect_id: string | null;
+  defect_title: string | null;
+  kind: NotificationKind;
+  title: string;
+  body: string | null;
+  read_at: string | null;
+  created_at: string;
 }

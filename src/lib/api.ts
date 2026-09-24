@@ -3,46 +3,20 @@ import { daysAgo, newDefectId } from './utils';
 import type {
   Defect, DBDefect, Contractor, Profile, RepairUpdate,
   DefectFilters, SignUpInput, SignInInput, CreateDefectInput, AdminStats,
+  AppNotification, NotificationKind, Severity,
 } from './types';
 
 /* ─────────────────────────────────────────────────────────
-   Demo data used when Supabase is not configured.
-   Enables the app to run standalone for previewing.
+   In-memory store used only when Supabase is not configured.
+   Starts empty — no sample data.
    ───────────────────────────────────────────────────────── */
+// Matches the demo contractor account (see setDemoRole) so jobs can be assigned in demo mode
 const DEMO_CONTRACTORS: Contractor[] = [
-  { id: 'c1', name: 'Central West Road Services', abbr: 'CW', crew_size: 6, rating: 4.8, created_at: new Date().toISOString() },
-  { id: 'c2', name: 'Cabonne Civil',              abbr: 'CC', crew_size: 4, rating: 4.4, created_at: new Date().toISOString() },
-  { id: 'c3', name: 'Summit Asphalt',             abbr: 'SA', crew_size: 8, rating: 4.9, created_at: new Date().toISOString() },
-  { id: 'c4', name: 'Orange City Works Crew',     abbr: 'OW', crew_size: 5, rating: 4.2, created_at: new Date().toISOString() },
+  { id: 'demo-contractor', name: 'Demo Contractor', abbr: 'DC', crew_size: 1, rating: 0, created_at: new Date().toISOString() },
 ];
+const DEMO_ROWS: Array<Omit<Defect, 'daysAgo' | 'mine'>> = [];
+const DEMO_UPDATES: Record<string, Array<Omit<RepairUpdate, 'id'>>> = {};
 
-const DEMO_ROWS: Array<Omit<Defect, 'daysAgo' | 'mine'>> = [
-  { id: 'RD-2041', title: 'Deep pothole in eastbound lane', description: 'Large pothole has opened in the eastbound lane approaching the Anson St lights. Water pooling in it after Tuesday rain. Two cars ahead of me hit it hard. Vehicle damage risk — this is on a bus route.', defect_type: 'pothole', severity: 'critical', status: 'progress', road: 'Summer St at Anson St', suburb: 'Orange', latitude: -33.28362, longitude: 149.09902, depth: '180 mm', width: '0.9 m', photo_url: null, votes: 23, progress: 60, reject_reason: null, reported_by: 'demo-citizen', contractor_id: 'c3', reported_at: new Date(Date.now() - 2 * 86400000).toISOString(), updated_at: new Date().toISOString() },
-  { id: 'RD-2038', title: 'Sealed edge collapsing on shoulder', description: 'Bitumen edge has broken away along a 22 metre stretch on the southern shoulder. Heavy truck traffic is widening it daily.', defect_type: 'edge', severity: 'high', status: 'assigned', road: 'Mitchell Hwy, 1.4 km W of Lucknow', suburb: 'Lucknow', latitude: -33.31290, longitude: 149.16240, depth: '90 mm', width: '0.4 m × 22 m', photo_url: null, votes: 11, progress: 0, reject_reason: null, reported_by: 'other', contractor_id: 'c1', reported_at: new Date(Date.now() - 4 * 86400000).toISOString(), updated_at: new Date().toISOString() },
-  { id: 'RD-2033', title: 'Stormwater pooling across both lanes', description: 'The grate is blocked with leaf litter so runoff crosses the full carriageway after any decent rain. Visibility of the kerb line is gone at night.', defect_type: 'flooding', severity: 'high', status: 'pending', road: 'Ophir St near Warrendine St', suburb: 'Orange', latitude: -33.27698, longitude: 149.09612, depth: null, width: '12 m', photo_url: null, votes: 17, progress: 0, reject_reason: null, reported_by: 'demo-citizen', contractor_id: null, reported_at: new Date(Date.now() - 1 * 86400000).toISOString(), updated_at: new Date().toISOString() },
-  { id: 'RD-2029', title: 'Longitudinal cracking, 40 m section', description: 'Series of parallel cracks running with the direction of travel. Widening since winter.', defect_type: 'crack', severity: 'medium', status: 'completed', road: 'Byng St near Lords Place', suburb: 'Orange', latitude: -33.28118, longitude: 149.10140, depth: '25 mm', width: '40 m', photo_url: null, votes: 6, progress: 100, reject_reason: null, reported_by: 'demo-citizen', contractor_id: 'c3', reported_at: new Date(Date.now() - 21 * 86400000).toISOString(), updated_at: new Date().toISOString() },
-  { id: 'RD-2026', title: 'Pothole cluster outside primary school', description: 'Three potholes in the drop-off zone. Parents are swerving into the opposing lane to avoid them at pickup time.', defect_type: 'pothole', severity: 'critical', status: 'assigned', road: 'McLachlan St at Kite St', suburb: 'Orange', latitude: -33.28902, longitude: 149.09338, depth: '140 mm', width: '3 potholes', photo_url: null, votes: 38, progress: 0, reject_reason: null, reported_by: 'other', contractor_id: 'c1', reported_at: new Date(Date.now() - 3 * 86400000).toISOString(), updated_at: new Date().toISOString() },
-  { id: 'RD-2024', title: 'Give way sign knocked flat', description: 'Sign post sheared at the base, likely struck overnight. Intersection currently uncontrolled.', defect_type: 'signage', severity: 'critical', status: 'completed', road: 'Bathurst Rd at Hill St', suburb: 'Orange', latitude: -33.29470, longitude: 149.11180, depth: null, width: null, photo_url: null, votes: 14, progress: 100, reject_reason: null, reported_by: 'other', contractor_id: 'c4', reported_at: new Date(Date.now() - 9 * 86400000).toISOString(), updated_at: new Date().toISOString() },
-  { id: 'RD-2021', title: 'Centre line completely worn away', description: 'Line marking is invisible in wet conditions along the whole stretch past the showground turnoff.', defect_type: 'marking', severity: 'medium', status: 'progress', road: 'Molong Rd, Orange to Borenore', suburb: 'Orange', latitude: -33.26830, longitude: 149.07420, depth: null, width: '2.1 km', photo_url: null, votes: 9, progress: 35, reject_reason: null, reported_by: 'demo-citizen', contractor_id: 'c2', reported_at: new Date(Date.now() - 12 * 86400000).toISOString(), updated_at: new Date().toISOString() },
-  { id: 'RD-2018', title: 'Shallow pothole near roundabout', description: 'Minor surface loss on the approach to the roundabout.', defect_type: 'pothole', severity: 'low', status: 'completed', road: 'Peisley St at Kite St', suburb: 'Orange', latitude: -33.28770, longitude: 149.10480, depth: '40 mm', width: '0.3 m', photo_url: null, votes: 3, progress: 100, reject_reason: null, reported_by: 'demo-citizen', contractor_id: 'c3', reported_at: new Date(Date.now() - 27 * 86400000).toISOString(), updated_at: new Date().toISOString() },
-  { id: 'RD-2015', title: 'Pavement subsidence over trench', description: 'Old service trench has settled. Noticeable dip that bottoms out low vehicles.', defect_type: 'subside', severity: 'high', status: 'progress', road: 'Icely Rd near Coronation Dr', suburb: 'Orange', latitude: -33.29510, longitude: 149.08130, depth: '110 mm dip', width: '6 m', photo_url: null, votes: 12, progress: 80, reject_reason: null, reported_by: 'other', contractor_id: 'c3', reported_at: new Date(Date.now() - 8 * 86400000).toISOString(), updated_at: new Date().toISOString() },
-  { id: 'RD-2012', title: 'Fallen branch blocking bike lane', description: 'Large gum branch down across the marked bike lane after Thursday winds.', defect_type: 'debris', severity: 'medium', status: 'completed', road: 'Forest Rd near Emmaville Ln', suburb: 'Orange', latitude: -33.27040, longitude: 149.10810, depth: null, width: null, photo_url: null, votes: 5, progress: 100, reject_reason: null, reported_by: 'demo-citizen', contractor_id: 'c4', reported_at: new Date(Date.now() - 15 * 86400000).toISOString(), updated_at: new Date().toISOString() },
-  { id: 'RD-2009', title: 'Crocodile cracking, full lane width', description: 'Interconnected cracking pattern suggesting base failure rather than a surface issue.', defect_type: 'crack', severity: 'high', status: 'assigned', road: 'Clergate Rd, 600 m N of Northern Distributor', suburb: 'Orange', latitude: -33.25310, longitude: 149.09010, depth: '30 mm', width: '18 m', photo_url: null, votes: 8, progress: 0, reject_reason: null, reported_by: 'other', contractor_id: 'c1', reported_at: new Date(Date.now() - 6 * 86400000).toISOString(), updated_at: new Date().toISOString() },
-  { id: 'RD-2006', title: 'Drain grate sitting 60 mm proud', description: 'Grate has lifted above the road surface. Hazard for cyclists using the kerb lane.', defect_type: 'flooding', severity: 'medium', status: 'pending', road: 'Lords Place at Summer St', suburb: 'Orange', latitude: -33.28558, longitude: 149.10270, depth: '60 mm', width: '0.6 m', photo_url: null, votes: 4, progress: 0, reject_reason: null, reported_by: 'demo-citizen', contractor_id: null, reported_at: new Date(Date.now() - 1 * 86400000).toISOString(), updated_at: new Date().toISOString() },
-  { id: 'RD-2001', title: 'Pothole on heritage streetscape', description: 'Pothole outside the bakery. High pedestrian and tourist traffic on weekends.', defect_type: 'pothole', severity: 'medium', status: 'assigned', road: 'Pym St, Millthorpe', suburb: 'Millthorpe', latitude: -33.44520, longitude: 149.19320, depth: '75 mm', width: '0.5 m', photo_url: null, votes: 19, progress: 0, reject_reason: null, reported_by: 'other', contractor_id: 'c2', reported_at: new Date(Date.now() - 5 * 86400000).toISOString(), updated_at: new Date().toISOString() },
-  { id: 'RD-1998', title: 'Washout after culvert overflow', description: 'Creek overtopped the culvert and scoured out the downstream shoulder. One lane effectively unusable.', defect_type: 'flooding', severity: 'critical', status: 'progress', road: 'Cargo Rd near Borenore Ck', suburb: 'Borenore', latitude: -33.27620, longitude: 148.94510, depth: '300 mm scour', width: '4 m', photo_url: null, votes: 16, progress: 25, reject_reason: null, reported_by: 'other', contractor_id: 'c1', reported_at: new Date(Date.now() - 3 * 86400000).toISOString(), updated_at: new Date().toISOString() },
-];
-
-const DEMO_UPDATES: Record<string, Array<Omit<RepairUpdate, 'id'>>> = {
-  'RD-2041': [
-    { defect_id: 'RD-2041', action: 'Report submitted', note: 'Photo and location captured on Summer St, eastbound lane.', progress: 0, photo_url: null, actor_id: 'demo-citizen', actor_role: 'citizen', created_at: new Date(Date.now() - 2 * 86400000).toISOString() },
-    { defect_id: 'RD-2041', action: 'Triaged as Critical', note: 'Bus route and vehicle damage risk. 24 hour SLA applied.', progress: 0, photo_url: null, actor_id: 'demo-admin', actor_role: 'admin', created_at: new Date(Date.now() - 2 * 86400000 + 3600000).toISOString() },
-    { defect_id: 'RD-2041', action: 'Assigned to crew', note: 'Crew 2 scheduled for the 6am window.', progress: 10, photo_url: null, actor_id: 'demo-admin', actor_role: 'admin', created_at: new Date(Date.now() - 1 * 86400000).toISOString() },
-    { defect_id: 'RD-2041', action: 'Cold-mix patch placed', note: 'Interim patch down and compacted. Hazard removed.', progress: 60, photo_url: 'photo', actor_id: 'demo-contractor', actor_role: 'contractor', created_at: new Date(Date.now() - 19 * 3600000).toISOString() },
-  ],
-};
-
-/* Convert DB row (possibly with string decimals) into our Defect shape */
 function mapDefect(r: DBDefect, myUserId: string | null): Defect {
   return {
     ...r,
@@ -59,6 +33,25 @@ function withDerived(row: Omit<Defect, 'daysAgo' | 'mine'>, myUserId: string | n
     daysAgo: daysAgo(row.reported_at),
     mine: !!myUserId && row.reported_by === myUserId,
   };
+}
+
+/* Demo mode has one user, so show every timeline update as a notification */
+const DEMO_KIND: Record<string, NotificationKind> = {
+  'Report submitted': 'report', 'Assigned': 'assigned', 'Contractor accepted': 'accepted',
+  'Contractor declined': 'declined', 'Work started': 'progress', 'Progress update': 'progress',
+  'Repair complete': 'complete', 'Verified by council': 'verified', 'Rework requested': 'rework',
+  'Report rejected': 'rejected',
+};
+let demoReadIds = new Set<string>();
+function demoNotifications(userId: string): AppNotification[] {
+  return Object.values(demoUpdates).flat()
+    .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))
+    .map(u => ({
+      id: u.id, user_id: userId, defect_id: u.defect_id,
+      defect_title: demoDefects.find(d => d.id === u.defect_id)?.title ?? null,
+      kind: DEMO_KIND[u.action] || 'update', title: u.action, body: u.note,
+      read_at: demoReadIds.has(u.id) ? u.created_at : null, created_at: u.created_at,
+    }));
 }
 
 /* Runtime demo store (mutable copy) */
@@ -96,6 +89,39 @@ export const api = {
   async signOut() {
     if (!HAS_SUPABASE) return;
     await supabase.auth.signOut();
+  },
+
+  async updateProfile(userId: string, patch: { name: string; phone: string | null; suburb: string | null }): Promise<void> {
+    if (!HAS_SUPABASE) return;
+    const { data, error } = await supabase.from('profiles').update(patch).eq('id', userId).select('id');
+    if (error) throw error;
+    if (!data?.length) throw new Error('Could not save your profile.');
+  },
+
+  /** Contractors can rename their own company (what council sees when assigning). */
+  async renameCompany(contractorId: string, name: string): Promise<void> {
+    if (!HAS_SUPABASE) {
+      const c = DEMO_CONTRACTORS.find(x => x.id === contractorId);
+      if (c) c.name = name;
+      return;
+    }
+    const { data, error } = await supabase.from('contractors').update({ name }).eq('id', contractorId).select('id');
+    if (error) throw error;
+    if (!data?.length) throw new Error('Could not rename the company.');
+  },
+
+  async changePassword(newPassword: string): Promise<void> {
+    if (!HAS_SUPABASE) throw new Error('Configure Supabase to change passwords.');
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+  },
+
+  /** Emails a reset link that brings the user back to #/reset-password. */
+  async requestPasswordReset(email: string): Promise<void> {
+    if (!HAS_SUPABASE) throw new Error('Configure Supabase to reset passwords.');
+    const redirectTo = `${window.location.origin}${window.location.pathname}?reset=1`;
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) throw error;
   },
 
   async getProfile(userId: string): Promise<Profile | null> {
@@ -215,16 +241,57 @@ export const api = {
       }
       return;
     }
-    const { error } = await supabase.from('defects').update(patch).eq('id', id);
+    const { data, error } = await supabase.from('defects').update(patch).eq('id', id).select('id');
+    if (error) throw error;
+    // Row-level security silently skips rows you may not edit — report that instead of pretending it worked
+    if (!data || data.length === 0) throw new Error("You don't have permission to change this defect.");
+  },
+
+  /** Council hands the job to a contractor with a work order (what to do) and a fix-by date. */
+  async assignDefect(id: string, contractorId: string, workInstructions: string, dueAt: string): Promise<void> {
+    return this.updateDefect(id, {
+      contractor_id: contractorId, status: 'assigned', accepted_at: null, verified_at: null, progress: 0, reject_reason: null,
+      work_instructions: workInstructions, due_at: dueAt,
+    });
+  },
+
+  async acceptAssignment(id: string, actorId: string): Promise<void> {
+    await this.updateDefect(id, { accepted_at: new Date().toISOString() });
+    await this.addUpdate(id, { action: 'Contractor accepted', note: 'Job accepted. Crew will be scheduled.' }, actorId, 'contractor');
+  },
+
+  /** Contractor turns the job down — it goes back to the council as unassigned. */
+  async declineAssignment(id: string, reason: string, actorId: string): Promise<void> {
+    if (!HAS_SUPABASE) {
+      await this.updateDefect(id, { status: 'pending', contractor_id: null, accepted_at: null, progress: 0 });
+      await this.addUpdate(id, { action: 'Contractor declined', note: reason, progress: 0 }, actorId, 'contractor');
+      return;
+    }
+    const { error } = await supabase.rpc('decline_assignment', { p_defect_id: id, p_reason: reason });
     if (error) throw error;
   },
 
-  async assignDefect(id: string, contractorId: string): Promise<void> {
-    return this.updateDefect(id, { contractor_id: contractorId, status: 'assigned' });
+  /** Council regrades a report during triage; logged on the timeline. */
+  async changeSeverity(id: string, from: Severity, to: Severity, actorId: string): Promise<void> {
+    await this.updateDefect(id, { severity: to });
+    const label = (s: Severity) => s.charAt(0).toUpperCase() + s.slice(1);
+    await this.addUpdate(id, { action: 'Severity changed', note: `${label(from)} → ${label(to)}` }, actorId, 'admin');
+  },
+
+  /** Council confirms the contractor's completed repair and closes the job. */
+  async verifyDefect(id: string, actorId: string): Promise<void> {
+    await this.updateDefect(id, { verified_at: new Date().toISOString() });
+    await this.addUpdate(id, { action: 'Verified by council', note: 'Repair inspected and approved. Defect closed.', progress: 100 }, actorId, 'admin');
+  },
+
+  /** Council isn't satisfied — the job goes back to the contractor as in progress. */
+  async requestRework(id: string, note: string, actorId: string): Promise<void> {
+    await this.updateDefect(id, { status: 'progress', progress: 80, verified_at: null });
+    await this.addUpdate(id, { action: 'Rework requested', note, progress: 80 }, actorId, 'admin');
   },
 
   async rejectDefect(id: string, reason: string, actorId: string): Promise<void> {
-    await this.updateDefect(id, { status: 'rejected', reject_reason: reason });
+    await this.updateDefect(id, { status: 'rejected', reject_reason: reason, contractor_id: null, accepted_at: null });
     await this.addUpdate(id, { action: 'Report rejected', note: reason, progress: 0 }, actorId, 'admin');
   },
 
@@ -297,17 +364,11 @@ export const api = {
   async platformStats(): Promise<import('./types').PlatformStats> {
     const defects = await this.listDefects({});
     const totalReported = defects.length;
-    const completed = defects.filter(d => d.status === 'completed');
-    const totalCompleted = completed.length;
+    const totalCompleted = defects.filter(d => d.status === 'completed' && d.verified_at).length;
     const closureRate = totalReported ? Math.round((totalCompleted / totalReported) * 100) : 0;
-    // Proxy for "time to first action": days between report and first status change
-    // (best available signal without pulling every repair_updates row).
-    const acted = defects.filter(d => d.status !== 'pending');
-    const avgDaysToFirstAction = acted.length
-      ? Math.round((acted.reduce((sum, d) => sum + Math.max(0, (+new Date(d.updated_at) - +new Date(d.reported_at)) / 86400000), 0) / acted.length) * 10) / 10
-      : 0;
+    const inProgress = defects.filter(d => d.status === 'assigned' || d.status === 'progress' || (d.status === 'completed' && !d.verified_at)).length;
     const activeResidents = new Set(defects.map(d => d.reported_by).filter(Boolean)).size;
-    return { totalReported, totalCompleted, closureRate, avgDaysToFirstAction, activeResidents };
+    return { totalReported, totalCompleted, closureRate, inProgress, activeResidents };
   },
 
   /* ── votes ("back this report") ────────────────────────────────── */
@@ -360,34 +421,84 @@ export const api = {
     if (error) throw error;
   },
 
-  /* ── activity feed (notifications bell) ────────────────────────── */
-  async recentActivity(opts: { userId: string; role: 'citizen' | 'contractor' | 'admin'; contractorId?: string | null }): Promise<RepairUpdate[]> {
+  /* ── council: people & companies ───────────────────────────────── */
+  async listProfiles(): Promise<Profile[]> {
     if (!HAS_SUPABASE) {
-      const all = Object.values(demoUpdates).flat();
-      return all.sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at)).slice(0, 6);
+      const now = new Date().toISOString();
+      return (['admin', 'contractor', 'citizen'] as const).map(r => ({
+        id: `demo-${r}`, email: `${r}@demo.local`, role: r, phone: null, suburb: null, avatar_url: null,
+        name: r === 'admin' ? 'Council Officer' : r === 'contractor' ? 'Demo Contractor' : 'Demo Resident',
+        contractor_id: r === 'contractor' ? 'demo-contractor' : null, created_at: now, updated_at: now,
+      }));
     }
-    let defectIds: string[] | null = null;
-    if (opts.role === 'citizen') {
-      const [mineRes, followRes] = await Promise.all([
-        supabase.from('defects').select('id').eq('reported_by', opts.userId),
-        supabase.from('followers').select('defect_id').eq('user_id', opts.userId),
-      ]);
-      defectIds = Array.from(new Set([
-        ...((mineRes.data as { id: string }[] | null) || []).map(d => d.id),
-        ...((followRes.data as { defect_id: string }[] | null) || []).map(f => f.defect_id),
-      ]));
-    } else if (opts.role === 'contractor') {
-      if (!opts.contractorId) return [];
-      const { data } = await supabase.from('defects').select('id').eq('contractor_id', opts.contractorId);
-      defectIds = ((data as { id: string }[] | null) || []).map(d => d.id);
-    }
-    // admin sees the global feed — defectIds stays null
-    if (defectIds && defectIds.length === 0) return [];
-    let q = supabase.from('repair_updates').select('*').order('created_at', { ascending: false }).limit(8);
-    if (defectIds) q = q.in('defect_id', defectIds);
-    const { data, error } = await q;
+    const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
     if (error) throw error;
-    return (data as RepairUpdate[]) || [];
+    return (data as Profile[]) || [];
+  },
+
+  /** Council changes a user's role; contractors are linked to a company (a new one if none given). */
+  async setUserRole(userId: string, role: Profile['role'], contractorId: string | null = null): Promise<void> {
+    if (!HAS_SUPABASE) throw new Error('Configure Supabase to manage users.');
+    const { error } = await supabase.rpc('admin_set_role', { p_user: userId, p_role: role, p_contractor: contractorId });
+    if (error) throw error;
+  },
+
+  async createCompany(name: string): Promise<Contractor> {
+    const abbr = name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+    if (!HAS_SUPABASE) {
+      const c: Contractor = { id: `demo-${Date.now()}`, name, abbr, crew_size: 1, rating: 0, created_at: new Date().toISOString() };
+      DEMO_CONTRACTORS.push(c);
+      return c;
+    }
+    const { data, error } = await supabase.from('contractors').insert({ name, abbr }).select().single();
+    if (error) throw error;
+    return data as Contractor;
+  },
+
+  /** Timeline entries used by the council reports (assignment and completion times). */
+  async listMilestones(): Promise<Pick<RepairUpdate, 'defect_id' | 'action' | 'created_at'>[]> {
+    if (!HAS_SUPABASE) {
+      return Object.values(demoUpdates).flat()
+        .filter(u => u.action === 'Assigned' || u.action === 'Repair complete')
+        .map(({ defect_id, action, created_at }) => ({ defect_id, action, created_at }));
+    }
+    const { data, error } = await supabase.from('repair_updates').select('defect_id, action, created_at')
+      .in('action', ['Assigned', 'Repair complete']).order('created_at', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  },
+
+  /* ── notifications (header bell) ─────────────────────────────── */
+  async listNotifications(userId: string): Promise<AppNotification[]> {
+    if (!HAS_SUPABASE) return demoNotifications(userId);
+    const { data, error } = await supabase.from('notifications').select('*')
+      .eq('user_id', userId).order('created_at', { ascending: false }).limit(30);
+    if (error) throw error;
+    return (data as AppNotification[]) || [];
+  },
+
+  /** Mark the given notifications (or all of them) as read. */
+  async markNotificationsRead(userId: string, ids: string[] | 'all'): Promise<void> {
+    const now = new Date().toISOString();
+    if (!HAS_SUPABASE) {
+      demoReadIds = ids === 'all' ? new Set(demoNotifications(userId).map(n => n.id)) : new Set([...demoReadIds, ...ids]);
+      return;
+    }
+    let q = supabase.from('notifications').update({ read_at: now }).eq('user_id', userId).is('read_at', null);
+    if (ids !== 'all') q = q.in('id', ids);
+    const { error } = await q;
+    if (error) throw error;
+  },
+
+  /** Live feed of new notifications. Returns an unsubscribe function. */
+  subscribeNotifications(userId: string, onNew: (n: AppNotification) => void): () => void {
+    if (!HAS_SUPABASE) return () => {};
+    const channel = supabase.channel(`notifications:${userId}`)
+      .on('postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+          (payload) => onNew(payload.new as AppNotification))
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   },
 
   /* ── photo storage ──────────────────────────────────────────────── */
