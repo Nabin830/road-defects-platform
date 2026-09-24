@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
-import { reverseGeocode } from '../lib/geocode';
+import { reverseGeocode, searchAddress, type PlaceResult } from '../lib/geocode';
 import { useAuth } from '../store/auth';
 import { useUI } from '../store/ui';
 import { DefectMap } from '../components/DefectMap';
 import { TYPES, SEVERITY } from '../lib/constants';
-import { IconCrosshair, IconLeft, IconRight, IconUpload, IconCheck, IconAlert, IconX } from '../lib/icons';
+import { IconSearch, IconCrosshair, IconLeft, IconRight, IconUpload, IconCheck, IconAlert, IconX } from '../lib/icons';
 import type { Defect, DefectType, Severity } from '../lib/types';
 import { SeverityChip } from '../components/Severity';
 import { StatusBadge } from '../components/Badge';
@@ -22,6 +22,17 @@ function metres(aLat: number, aLng: number, bLat: number, bLng: number) {
 const NEARBY_M = 150;
 
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+const TITLE_MIN = 8, TITLE_MAX = 100, DESC_MIN = 20, DESC_MAX = 2000;
+
+/** Rejects keyboard mashing like "ghh" / "aaaaaaa": needs real words, not one repeated character. */
+function looksReal(text: string, min: number) {
+  const t = text.trim();
+  if (t.length < min) return false;
+  const letters = t.replace(/[^a-z]/gi, '');
+  if (letters.length < 4) return false;
+  if (new Set(letters.toLowerCase()).size < 3) return false;
+  return /\s/.test(t) || t.length >= 12;
+}
 
 export function ReportPage() {
   const nav = useNavigate();
@@ -37,6 +48,10 @@ export function ReportPage() {
   const [accuracy, setAccuracy] = useState<number | null>(null);
   const placeAuto = useRef(true);   // true while the road field holds an address we filled in (not typed by the user)
   const watchId = useRef<number | null>(null);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<PlaceResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [type, setType] = useState<DefectType | ''>('');
   const [sev, setSev] = useState<Severity | ''>('');
   const [title, setTitle] = useState('');
@@ -76,6 +91,26 @@ export function ReportPage() {
     return () => { clearTimeout(t); ctrl.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lat, lng]);
+
+  // Address search as you type (debounced to respect the free geocoder's rate limit)
+  useEffect(() => {
+    if (query.trim().length < 3) { setResults([]); return; }
+    const ctrl = new AbortController();
+    const t = setTimeout(() => {
+      setSearching(true);
+      searchAddress(query, ctrl.signal)
+        .then(r => { setResults(r); setSearchOpen(true); })
+        .catch(() => {})
+        .finally(() => { if (!ctrl.signal.aborted) setSearching(false); });
+    }, 600);
+    return () => { clearTimeout(t); ctrl.abort(); };
+  }, [query]);
+
+  function chooseResult(r: PlaceResult) {
+    setLat(r.lat); setLng(r.lng); setAccuracy(null);
+    setPlace(r.label); placeAuto.current = true;
+    setQuery(r.label); setSearchOpen(false);
+  }
 
   useEffect(() => () => { if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current); }, []);
 
@@ -141,15 +176,20 @@ export function ReportPage() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
+  const titleOk = looksReal(title, TITLE_MIN) && title.trim().length <= TITLE_MAX;
+  const descOk = looksReal(desc, DESC_MIN) && desc.trim().length <= DESC_MAX;
+
   function next() {
     if (step === 1 && (lat == null || lng == null)) return toast('warning', 'Pick a location', 'Tap on the map or use "Use my location".');
     if (step === 1 && !place.trim()) return toast('warning', 'Add the road name', 'Tell the crew which road or landmark it is near.');
-    if (step === 2 && (!type || !sev || !title)) return toast('warning', 'Missing details', 'Choose a type, severity, and title.');
+    if (step === 2 && (!type || !sev)) return toast('warning', 'Missing details', 'Choose a type and severity.');
+    if (step === 2 && !titleOk) return toast('warning', 'Add a clear title', `Describe the problem in a few words (at least ${TITLE_MIN} characters).`);
+    if (step === 2 && !descOk) return toast('warning', 'Add a description', `Tell the crew what's there (at least ${DESC_MIN} characters).`);
     setStep(Math.min(3, step + 1));
   }
 
   async function submit() {
-    if (lat == null || lng == null || !type || !sev || !title) {
+    if (lat == null || lng == null || !type || !sev || !titleOk || !descOk) {
       return toast('warning', 'Fill in required fields', 'Something is missing.');
     }
     if (!userId) return toast('warning', 'Sign in required', 'Create an account or sign in to submit a report.');
@@ -164,7 +204,7 @@ export function ReportPage() {
         }
       }
       const created = await api.createDefect({
-        title, description: desc, defect_type: type as DefectType, severity: sev as Severity,
+        title: title.trim(), description: desc.trim(), defect_type: type as DefectType, severity: sev as Severity,
         road: place.trim(), latitude: lat, longitude: lng, photo_url,
       }, userId);
       toast('success', `Report submitted — ${created.id}`, 'Council will review it and assign a contractor.');
@@ -203,7 +243,30 @@ export function ReportPage() {
       {step === 1 && (
         <section className="card p-6">
           <h3 className="mb-2">Where is it?</h3>
-          <p className="text-[13.5px] text-muted mb-5">Tap the map to drop a pin, or use your device location. You can drag the pin to the exact spot.</p>
+          <p className="text-[13.5px] text-muted mb-5">Search an address, tap the map, or use your device location. You can drag the pin to the exact spot.</p>
+          <div className="relative mb-3">
+            <label className="sr-only" htmlFor="addr-search">Search for an address</label>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none"><IconSearch size={16} /></span>
+            <input id="addr-search" className="input !pl-9" value={query} autoComplete="off"
+                   onChange={(e) => setQuery(e.target.value)} onFocus={() => results.length && setSearchOpen(true)}
+                   onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
+                   onKeyDown={(e) => { if (e.key === 'Enter' && results[0]) { e.preventDefault(); chooseResult(results[0]); } if (e.key === 'Escape') setSearchOpen(false); }}
+                   placeholder="Search an address — e.g. 120 Summer Street, Orange" />
+            {searching && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11.5px] text-muted">Searching…</span>}
+            {searchOpen && query.trim().length >= 3 && !searching && (
+              <ul className="absolute z-[1000] left-0 right-0 mt-1 card shadow-lg overflow-hidden" role="listbox">
+                {results.length === 0 && <li className="px-3 py-2.5 text-[13px] text-muted">No matches. Try the street name and suburb, or tap the map.</li>}
+                {results.map((r, i) => (
+                  <li key={i}>
+                    <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => chooseResult(r)}
+                            className="w-full text-left px-3 py-2.5 text-[13.5px] hover:bg-brand-soft border-b border-border last:border-0">
+                      {r.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <div className="mb-4">
             <DefectMap defects={[]} height={400} onPick={pickSpot}
                        pickedLat={lat} pickedLng={lng} legend={false} />
@@ -282,15 +345,21 @@ export function ReportPage() {
           </div>
 
           <div className="grid gap-1.5">
-            <label className="label" htmlFor="r-title">Title</label>
-            <input id="r-title" className="input" value={title} onChange={(e) => setTitle(e.target.value)}
-                   placeholder="Short summary — 'Deep pothole in eastbound lane'" />
+            <label className="label" htmlFor="r-title">Title <span className="text-rd-600">*</span></label>
+            <input id="r-title" className="input" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={TITLE_MAX}
+                   placeholder="Short summary — 'Deep pothole in eastbound lane'" aria-invalid={!!title && !titleOk} />
+            <span className={`text-[11.5px] ${title && !titleOk ? 'text-rd-600' : 'text-muted'}`}>
+              {title && !titleOk ? `Use real words, at least ${TITLE_MIN} characters.` : `${title.trim().length}/${TITLE_MAX}`}
+            </span>
           </div>
 
           <div className="grid gap-1.5">
-            <label className="label" htmlFor="r-desc">Description</label>
-            <textarea id="r-desc" className="textarea" value={desc} onChange={(e) => setDesc(e.target.value)}
-                      placeholder="Anything the crew should know: depth, width, traffic risk, time of day it's worst…" />
+            <label className="label" htmlFor="r-desc">Description <span className="text-rd-600">*</span></label>
+            <textarea id="r-desc" className="textarea" value={desc} onChange={(e) => setDesc(e.target.value)} maxLength={DESC_MAX}
+                      placeholder="Anything the crew should know: depth, width, traffic risk, time of day it's worst…" aria-invalid={!!desc && !descOk} />
+            <span className={`text-[11.5px] ${desc && !descOk ? 'text-rd-600' : 'text-muted'}`}>
+              {desc && !descOk ? `A little more detail please — at least ${DESC_MIN} characters.` : `${desc.trim().length}/${DESC_MAX}`}
+            </span>
           </div>
         </section>
       )}

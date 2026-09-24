@@ -5,6 +5,7 @@ import { dueDate, slaStatus } from '../lib/sla';
 import { TYPES } from '../lib/constants';
 import { ColumnChart, BarList } from '../components/Charts';
 import type { Contractor, Defect, RepairUpdate } from '../lib/types';
+import { IconDownload } from '../lib/icons';
 
 type Milestone = Pick<RepairUpdate, 'defect_id' | 'action' | 'created_at'>;
 const RANGES = [3, 6, 12] as const;
@@ -123,11 +124,13 @@ export function ReportsPage() {
           <span className="section-label">Council</span>
           <h1 className="mt-1">Reports</h1>
           <p className="text-muted mt-1">How quickly defects are being fixed, and by whom.</p>
+          <p className="hidden print:block text-[12px] text-muted mt-1">Last {range} months · printed {new Date().toLocaleDateString('en-AU', { dateStyle: 'long' })}</p>
         </div>
+        <button onClick={() => window.print()} className="btn btn-secondary print:hidden"><IconDownload size={16} /> Print / save as PDF</button>
       </div>
 
       {/* One filter row that scopes everything below */}
-      <div className="flex flex-wrap items-center gap-2 mb-6" role="group" aria-label="Time range">
+      <div className="flex flex-wrap items-center gap-2 mb-6 print:hidden" role="group" aria-label="Time range">
         <span className="text-[12.5px] font-semibold text-muted mr-1">Last</span>
         {RANGES.map(n => (
           <button key={n} onClick={() => setRange(n)} aria-pressed={range === n} className="chip !h-8 whitespace-nowrap">{n} months</button>

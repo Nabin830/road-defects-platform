@@ -129,7 +129,7 @@ export function RegisterPage() {
             <label className="flex items-start gap-2.5 text-[13px] text-ink-2 cursor-pointer">
               <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)}
                      className="w-4 h-4 mt-0.5 accent-brand flex-none" required />
-              I confirm the details I provide are accurate, and understand reports are shown on the public map.
+              <span>I agree to the <Link to="/terms" target="_blank">terms of use</Link> and <Link to="/privacy" target="_blank">privacy policy</Link>, and understand reports are shown on the public map.</span>
             </label>
 
             <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy}>

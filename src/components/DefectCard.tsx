@@ -3,18 +3,19 @@ import type { Defect } from '../lib/types';
 import { relativeTime } from '../lib/utils';
 import { StatusBadge } from './Badge';
 import { SeverityChip } from './Severity';
-import { Placeholder } from './Placeholder';
+import { MapThumb } from './MapThumb';
 import { SlaChip } from './SlaChip';
 import { typeOf } from '../lib/constants';
 
 export function DefectCard({ d }: { d: Defect }) {
   return (
     <Link to={`/defect/${d.id}`} className="card card-hover overflow-hidden group hover:no-underline">
-      <div className={`relative ${d.photo_url ? "aspect-video" : "aspect-[16/6]"}`}>
+      <div className="relative aspect-video">
         {d.photo_url ? (
           <img src={d.photo_url} alt={d.title} className="absolute inset-0 w-full h-full object-cover" />
         ) : (
-          <Placeholder label={`${typeOf(d.defect_type).label} — ${d.road}`} className="absolute inset-0 !border-0 !border-b" />
+          <MapThumb lat={d.latitude} lng={d.longitude} severity={d.severity}
+                    label={`${typeOf(d.defect_type).label} — ${d.road}`} className="absolute inset-0 border-b border-border" />
         )}
         <div className="absolute top-2 right-2"><StatusBadge status={d.status} verified={!!d.verified_at} /></div>
       </div>

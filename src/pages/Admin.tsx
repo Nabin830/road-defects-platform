@@ -5,11 +5,11 @@ import { DefectMap } from '../components/DefectMap';
 import { StatCard } from '../components/StatCard';
 import { StatusBadge } from '../components/Badge';
 import { SeverityChip } from '../components/Severity';
-import { IconChart, IconWrench, IconUsers, IconTrend, IconAlert, IconStar, IconDownload } from '../lib/icons';
+import { IconChart, IconWrench, IconUsers, IconTrend, IconAlert, IconClock, IconDownload } from '../lib/icons';
 import { STATUS, SEVERITY } from '../lib/constants';
 import { relativeTime } from '../lib/utils';
 import { useUI } from '../store/ui';
-import { slaStatus } from '../lib/sla';
+import { slaStatus, dueDate } from '../lib/sla';
 import { SlaChip } from '../components/SlaChip';
 import type { Defect, Contractor, DefectStatus, Severity as Sev } from '../lib/types';
 
@@ -31,16 +31,28 @@ export function AdminPage() {
   const pending = defects.filter(d => d.status === 'pending');
   const toVerify = defects.filter(d => d.status === 'completed' && !d.verified_at);
   const overdue = defects.filter(d => slaStatus(d)?.overdue);
+  const dueSoon = defects.filter(d => slaStatus(d)?.soon);
+  // Most overdue first, then the ones about to run out
+  const urgent = [...overdue, ...dueSoon].sort((a, b) => +dueDate(a) - +dueDate(b));
+  const conName = (id: string | null) => (id && contractors.find(c => c.id === id)?.name) || '';
 
   function exportCsv() {
     if (defects.length === 0) return toast('warning', 'Nothing to export', 'No defects loaded yet.');
-    const cols: (keyof Defect)[] = ['id', 'title', 'defect_type', 'severity', 'status', 'road', 'suburb', 'latitude', 'longitude', 'votes', 'progress', 'reported_at', 'contractor_id'];
+    const cols: [string, (d: Defect) => unknown][] = [
+      ['ID', d => d.id], ['Title', d => d.title], ['Type', d => d.defect_type], ['Severity', d => d.severity],
+      ['Status', d => d.status], ['Address', d => d.road], ['Suburb', d => d.suburb],
+      ['Latitude', d => d.latitude], ['Longitude', d => d.longitude], ['Backing', d => d.votes], ['Progress %', d => d.progress],
+      ['Reported', d => d.reported_at], ['Contractor', d => conName(d.contractor_id)], ['Work order', d => d.work_instructions],
+      ['Fix by', d => dueDate(d).toISOString()], ['Deadline status', d => slaStatus(d)?.label ?? (d.verified_at ? 'Verified' : d.status)],
+      ['Verified', d => d.verified_at], ['Reject reason', d => d.reject_reason],
+    ];
     const esc = (v: unknown) => {
       const s = v == null ? '' : String(v);
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const csv = [cols.join(','), ...defects.map(d => cols.map(c => esc(d[c])).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const csv = [cols.map(c => c[0]).join(','), ...defects.map(d => cols.map(([, get]) => esc(get(d))).join(','))].join('\n');
+    // BOM so Excel opens it as UTF-8 (keeps en dashes and accents intact)
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -66,9 +78,23 @@ export function AdminPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <StatCard k="Total defects" v={total} d="live in the program" icon={<IconChart size={16} />} color="var(--brand-text)" bg="var(--brand-soft)" />
         <StatCard k="Pending triage" v={pending.length} d="new reports" icon={<IconAlert size={16} />} color="#B45309" bg="#FFFBEB" />
-        <StatCard k="Overdue" v={overdue.length} d="past their deadline" icon={<IconStar size={16} />} color="#B91C1C" bg="#FEF2F2" />
+        <StatCard k="Overdue" v={overdue.length} d="past their deadline" icon={<IconClock size={16} />} color="#B91C1C" bg="#FEF2F2" />
         <StatCard k="Awaiting sign-off" v={toVerify.length} d="repairs to verify" icon={<IconUsers size={16} />} color="#047857" bg="#ECFDF5" />
       </div>
+
+      {/* Deadlines needing attention */}
+      {urgent.length > 0 && (
+        <div className="mb-5">
+          <ActionList
+            title={`Overdue or due within 24 hours`}
+            empty=""
+            rows={urgent.slice(0, 10).map(d => ({ d, meta: `${d.road}${d.contractor_id ? ` · ${conName(d.contractor_id)}` : ' · not assigned yet'}` }))}
+            cta="Open"
+            ctaCls="btn-danger"
+            tone="danger"
+          />
+        </div>
+      )}
 
       {/* What council needs to act on */}
       <div className="grid lg:grid-cols-2 gap-5 mb-8">
@@ -184,11 +210,11 @@ export function AdminPage() {
   );
 }
 
-function ActionList({ title, empty, rows, cta, ctaCls }: {
-  title: string; empty: string; rows: { d: Defect; meta: string }[]; cta: string; ctaCls: string;
+function ActionList({ title, empty, rows, cta, ctaCls, tone }: {
+  title: string; empty: string; rows: { d: Defect; meta: string }[]; cta: string; ctaCls: string; tone?: 'danger';
 }) {
   return (
-    <div className="card overflow-hidden">
+    <div className={`card overflow-hidden ${tone === 'danger' ? '!border-rd-600' : ''}`}>
       <div className="card-head">
         <h3 className="flex-1 text-[17px]">{title}</h3>
         <span className={`mono text-[11px] font-bold px-2 py-0.5 rounded-pill border ${rows.length ? 'bg-brand text-brand-ink border-brand' : 'bg-surface-2 text-muted border-border'}`}>{rows.length}</span>

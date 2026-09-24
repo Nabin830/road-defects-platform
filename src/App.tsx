@@ -19,6 +19,7 @@ import { ProfilePage } from './pages/Profile';
 import { PeoplePage } from './pages/People';
 import { ReportsPage } from './pages/Reports';
 import { ForgotPasswordPage, ResetPasswordPage } from './pages/PasswordReset';
+import { PrivacyPage, TermsPage } from './pages/Legal';
 
 export function App() {
   const loc = useLocation();
@@ -57,6 +58,8 @@ export function App() {
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/terms" element={<TermsPage />} />
           <Route path="/admin/people" element={<ProtectedRoute allow={['admin']}><PeoplePage /></ProtectedRoute>} />
           <Route path="/admin/reports" element={<ProtectedRoute allow={['admin']}><ReportsPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute allow={['admin']}><AdminPage /></ProtectedRoute>} />

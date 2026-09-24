@@ -55,6 +55,10 @@ export function DefectDetailPage() {
   const contractor = defect.contractor_id ? contractors.find(c => c.id === defect.contractor_id) : null;
   // Contractors can only act on jobs assigned to their own company
   const myJob = role === 'contractor' && !!profile?.contractor_id && defect.contractor_id === profile.contractor_id;
+  // Latest contractor photo once the repair is done — shown against the resident's original photo
+  const afterPhoto = defect.status === 'completed'
+    ? [...updates].reverse().find(u => u.photo_url && u.actor_role === 'contractor') ?? null
+    : null;
   const awaitingResponse = myJob && defect.status === 'assigned' && !defect.accepted_at;
   const awaitingVerification = defect.status === 'completed' && !defect.verified_at;
   const verified = defect.status === 'completed' && !!defect.verified_at;
@@ -237,6 +241,31 @@ export function DefectDetailPage() {
               )}
             </div>
           </div>
+
+          {afterPhoto && (
+            <div className="card p-6 order-3 lg:order-none lg:col-start-1">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <h3>Before &amp; after</h3>
+                {verified && <span className="text-[12.5px] font-semibold text-emerald-700 flex items-center gap-1"><IconCheck size={14} /> Verified by council</span>}
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {[
+                  { tag: 'Before', src: defect.photo_url, when: defect.reported_at, note: 'Reported by a resident' },
+                  { tag: 'After', src: afterPhoto.photo_url, when: afterPhoto.created_at, note: afterPhoto.action },
+                ].map(p => (
+                  <figure key={p.tag} className="m-0">
+                    <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-bg-alt border border-border">
+                      {p.src
+                        ? <a href={p.src} target="_blank" rel="noreferrer"><img src={p.src} alt={`${p.tag}: ${defect.title}`} className="absolute inset-0 w-full h-full object-cover" /></a>
+                        : <div className="absolute inset-0 grid place-items-center text-[13px] text-muted">No photo supplied</div>}
+                      <span className={`absolute top-2 left-2 text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${p.tag === 'After' ? 'bg-em-600 text-white' : 'bg-ink text-bg'}`}>{p.tag}</span>
+                    </div>
+                    <figcaption className="text-[12px] text-muted mt-1.5">{p.note} · {fmt(p.when)}</figcaption>
+                  </figure>
+                ))}
+              </div>
+            </div>
+          )}
 
           {defect.work_instructions && defect.status !== 'pending' && defect.status !== 'rejected' && (
             <div className="card p-6 order-3 lg:order-none lg:col-start-1 border-brand">

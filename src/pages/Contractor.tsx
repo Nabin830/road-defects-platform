@@ -6,6 +6,7 @@ import { SeverityChip } from '../components/Severity';
 import { StatusBadge } from '../components/Badge';
 import { relativeTime } from '../lib/utils';
 import { SlaChip } from '../components/SlaChip';
+import { slaStatus } from '../lib/sla';
 import type { Contractor, Defect } from '../lib/types';
 import vehicleDecal from '../Logos/vehicle-decal.png';
 
@@ -25,6 +26,8 @@ export function ContractorPage() {
   const progress = rows.filter(r => r.status === 'progress');
   const done     = rows.filter(r => r.status === 'completed');
   const needsResponse = assigned.filter(r => !r.accepted_at).length;
+  const lateJobs = rows.filter(r => slaStatus(r)?.overdue);
+  const soonJobs = rows.filter(r => slaStatus(r)?.soon);
 
   if (!contractorId) {
     return (
@@ -51,6 +54,21 @@ export function ContractorPage() {
           {needsResponse > 0 && <> · <b className="text-am-700">{needsResponse} waiting for your response</b></>}
         </p>
       </div>
+
+      {(lateJobs.length > 0 || soonJobs.length > 0) && (
+        <div role="alert" className={`mb-5 p-4 rounded-card border ${lateJobs.length ? 'bg-rd-50 border-rd-600/30 text-rd-700' : 'bg-am-50 border-am-500/30 text-am-700'}`}>
+          <div className="font-bold text-[14px] mb-1">
+            {lateJobs.length > 0 && `${lateJobs.length} job${lateJobs.length === 1 ? ' is' : 's are'} overdue`}
+            {lateJobs.length > 0 && soonJobs.length > 0 && ' · '}
+            {soonJobs.length > 0 && `${soonJobs.length} due within 24 hours`}
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
+            {[...lateJobs, ...soonJobs].map(r => (
+              <Link key={r.id} to={`/defect/${r.id}`} className="font-semibold underline text-inherit">{r.id} · {r.title}</Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Column title="Assigned" count={assigned.length} rows={assigned} />

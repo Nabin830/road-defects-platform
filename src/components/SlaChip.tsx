@@ -8,8 +8,8 @@ export function SlaChip({ d, className = '' }: { d: Pick<Defect, 'reported_at' |
   if (!s) return null;
   return (
     <span title={`Due ${s.due.toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' })}`}
-          className={`inline-flex items-center gap-1 text-[11.5px] font-semibold whitespace-nowrap ${s.overdue ? 'text-rd-600' : 'text-muted'} ${className}`}>
-      {s.overdue ? <IconAlert size={12} /> : <IconClock size={12} />} {s.label}
+          className={`inline-flex items-center gap-1 text-[11.5px] font-semibold whitespace-nowrap ${s.overdue ? 'text-rd-600' : s.soon ? 'text-am-700' : 'text-muted'} ${className}`}>
+      {s.overdue || s.soon ? <IconAlert size={12} /> : <IconClock size={12} />} {s.label}
     </span>
   );
 }
