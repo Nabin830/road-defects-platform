@@ -11,7 +11,7 @@ export function StatCard({ k, v, d, icon, color }: Props) {
           {icon}
         </span>
       )}
-      <div className="text-[11.5px] font-bold tracking-widest uppercase text-muted">{k}</div>
+      <div className={`text-[11.5px] font-bold tracking-widest uppercase text-muted ${icon ? 'pr-10' : ''}`}>{k}</div>
       <div className="mono text-[30px] font-bold tracking-tight leading-tight mt-0.5">{v}</div>
       {d && <div className="text-xs text-muted mt-0.5">{d}</div>}
     </div>

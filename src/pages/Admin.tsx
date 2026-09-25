@@ -161,7 +161,7 @@ export function AdminPage() {
       </div>
 
       {/* Contractors table + map */}
-      <div className="grid xl:grid-cols-[minmax(0,1fr)_420px] gap-5 mb-8 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-5 mb-8 items-start">
         <div className="card">
           <div className="card-head">
             <h3 className="flex-1">Contractor performance</h3>

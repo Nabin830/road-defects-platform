@@ -238,7 +238,7 @@ export function ReportPage() {
               <div className={`w-[30px] h-[30px] rounded-full grid place-items-center text-[12.5px] font-bold flex-none border ${done ? 'bg-em-600 text-white border-em-600' : on ? 'bg-brand text-brand-ink border-brand' : 'bg-surface-2 text-muted border-border'}`}>
                 {done ? <IconCheck size={14} /> : i + 1}
               </div>
-              <div className={`text-[13px] font-semibold whitespace-nowrap ${on || done ? 'text-ink' : 'text-muted'}`}>{s}</div>
+              <div className={`text-[13px] font-semibold whitespace-nowrap ${on || done ? 'text-ink' : 'text-muted'} ${on ? '' : 'hidden sm:block'}`}>{s}</div>
               {i < steps.length - 1 && <div className={`flex-1 h-0.5 mx-3 ${done ? 'bg-em-600' : 'bg-border'}`} />}
             </div>
           );

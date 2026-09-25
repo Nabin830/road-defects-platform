@@ -148,7 +148,7 @@ export function ReportsPage() {
           ))}
         </div>
 
-        <div className="grid lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-5 mb-5">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-5 mb-5">
           <section className="card p-5">
             <h3 className="text-[17px]">Reports received vs repairs verified</h3>
             <p className="text-[12.5px] text-muted mb-4">Per month. When verified keeps up with received, the backlog isn't growing.</p>

@@ -74,7 +74,7 @@ export function DefectsPage() {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-[260px_minmax(0,1fr)] gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-5">
         {/* Filters */}
         <button onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters}
                 className="lg:hidden btn btn-secondary justify-between">

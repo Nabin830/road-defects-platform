@@ -52,7 +52,7 @@ export function DashboardPage() {
         <StatCard k="Completed" v={c.done} d="verified by council" icon={<IconCheckCircle size={17} />} color="#047857" />
       </div>
 
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-6">
         <section className="card">
           <div className="card-head">
             <h3 className="flex-1">My recent reports</h3>
@@ -76,7 +76,7 @@ export function DashboardPage() {
                       <div className="text-[14px] font-semibold text-ink truncate">{d.title}</div>
                       <div className="text-[12.5px] text-muted mt-0.5 truncate">{d.road} · {relativeTime(d.reported_at)}</div>
                     </div>
-                    <SeverityChip level={d.severity} />
+                    <span className="hidden sm:inline-flex"><SeverityChip level={d.severity} /></span>
                     <StatusBadge status={d.status} verified={!!d.verified_at} />
                   </Link>
                 ))}

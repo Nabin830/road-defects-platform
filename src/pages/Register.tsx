@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { BrandLogo } from '../components/Brand';
 import sticker from '../Logos/sticker-icon.png';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { homeFor } from '../components/ProtectedRoute';
 import { useAuth } from '../store/auth';
 import { useUI } from '../store/ui';
 import { HAS_SUPABASE } from '../lib/supabase';
@@ -9,6 +10,8 @@ import { IconUser, IconTruck, IconAlert, IconCheck } from '../lib/icons';
 import type { Role } from '../lib/types';
 
 export function RegisterPage() {
+  // Already signed in when the page opened → go to their own home instead of showing the form again
+  const [alreadyIn] = useState(() => { const a = useAuth.getState(); return a.ready && a.authed ? a.role : null; });
   const nav = useNavigate();
   const { signUp, setDemoRole } = useAuth();
   const { toast } = useUI();
@@ -47,6 +50,8 @@ export function RegisterPage() {
       setBusy(false);
     }
   }
+
+  if (alreadyIn) return <Navigate to={homeFor(alreadyIn)} replace />;
 
   return (
     <div className="min-h-screen grid md:grid-cols-2">

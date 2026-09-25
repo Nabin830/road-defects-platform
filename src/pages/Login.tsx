@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { BrandLogo } from '../components/Brand';
 import sticker from '../Logos/sticker-lockup.png';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { homeFor } from '../components/ProtectedRoute';
 import { useAuth } from '../store/auth';
 import { useUI } from '../store/ui';
 import { HAS_SUPABASE } from '../lib/supabase';
 import { IconMail, IconLock, IconEye, IconShield } from '../lib/icons';
 
 export function LoginPage() {
+  // Already signed in when the page opened → go to their own home instead of showing the form again
+  const [alreadyIn] = useState(() => { const a = useAuth.getState(); return a.ready && a.authed ? a.role : null; });
   const nav = useNavigate();
   // Page the user was sent here from (e.g. /report), so we can return them after sign-in
   const from = (useLocation().state as { from?: string } | null)?.from;
@@ -42,6 +45,8 @@ export function LoginPage() {
       setBusy(false);
     }
   }
+
+  if (alreadyIn) return <Navigate to={homeFor(alreadyIn)} replace />;
 
   return (
     <div className="min-h-screen grid md:grid-cols-2">

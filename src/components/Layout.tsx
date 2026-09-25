@@ -73,7 +73,7 @@ export function Navbar() {
   const showReport = !authed || role === 'citizen';
 
   return (
-    <header className="print:hidden glass sticky top-0 z-[500] border-b border-border" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+    <header className="print:hidden glass sticky top-0 z-[1100] border-b border-border" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       <div className="w-full max-w-[1280px] mx-auto px-4 sm:px-6 h-16 flex items-center gap-4 lg:gap-8">
         <Logo />
 
@@ -275,7 +275,7 @@ export function TabBar() {
       ];
 
   return (
-    <nav className="print:hidden glass md:hidden sticky bottom-0 z-[500] border-t border-border grid py-1.5 px-1"
+    <nav className="print:hidden glass md:hidden sticky bottom-0 z-[1100] border-t border-border grid py-1.5 px-1"
          style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`, paddingBottom: 'calc(6px + env(safe-area-inset-bottom, 0px))' }}
          aria-label="Mobile">
       {items.map(({ to, icon: Icon, label }) => (
