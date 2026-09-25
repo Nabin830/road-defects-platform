@@ -186,8 +186,8 @@ export function DefectDetailPage() {
     if (!userId) return toast('warning', 'Sign in required', 'Sign in to follow this report.');
     setFollowBusy(true);
     try {
-      if (following) { await api.unfollow(defect.id, userId); setFollowing(false); toast('info', 'Unfollowed', 'You will no longer see this highlighted.'); }
-      else { await api.follow(defect.id, userId); setFollowing(true); toast('success', 'Following this defect', 'It will be pinned in your dashboard as it progresses.'); }
+      if (following) { await api.unfollow(defect.id, userId); setFollowing(false); toast('info', 'Unfollowed', "You won't get notifications for this report any more."); }
+      else { await api.follow(defect.id, userId); setFollowing(true); toast('success', 'Following this defect', 'Updates will appear under the bell icon on this website. No emails are sent.'); }
     } catch (err: any) {
       toast('error', 'Could not update follow status', err.message || 'Please try again.');
     } finally { setFollowBusy(false); }
