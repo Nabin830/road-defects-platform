@@ -78,14 +78,14 @@ export function ContractorPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Column title="Assigned" count={assigned.length} rows={assigned} />
-        <Column title="In progress" count={progress.length} rows={progress} accent="pu" />
-        <Column title="Completed" count={done.length} rows={done} accent="em" />
+        <Column title="In progress" count={progress.length} rows={progress} />
+        <Column title="Completed" count={done.length} rows={done} />
       </div>
     </main>
   );
 }
 
-function Column({ title, count, rows, accent }: { title: string; count: number; rows: Defect[]; accent?: 'pu' | 'em' }) {
+function Column({ title, count, rows }: { title: string; count: number; rows: Defect[] }) {
   return (
     <div className="bg-bg-alt border border-border rounded-card p-3">
       <header className="flex items-center gap-2 px-1 pb-3">
