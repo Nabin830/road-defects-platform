@@ -4,7 +4,7 @@ import type { Severity } from '../lib/types';
 const TILE = 256;
 
 /** Static street-map preview centred on a point: a 3×3 block of OpenStreetMap tiles, no Leaflet needed. */
-export function MapThumb({ lat, lng, severity, label, zoom = 17, className = '' }: {
+export function MapThumb({ lat, lng, severity, label, zoom = 16, className = '' }: {
   lat: number; lng: number; severity: Severity; label: string; zoom?: number; className?: string;
 }) {
   // Web-Mercator: world pixel position of the point at this zoom

@@ -63,7 +63,7 @@ export function DefectMap({ defects, height = 400, onPick, pickedLat, pickedLng,
             <span style="padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--ink-2);font-weight:600">${STATUS[d.status].label}</span>
             <span style="color:${color};font-weight:700">${SEVERITY[d.severity].label}</span>
           </div>
-          <a href="#/defect/${d.id}" style="font-size:12px;font-weight:700;color:#C2540F">View details →</a>
+          <a href="#/defect/${d.id}" style="font-size:12px;font-weight:700;color:var(--brand-text)">View details →</a>
         </div>`;
       marker.bindPopup(popup, { maxWidth: 250 });
       marker.on('click', () => marker.openPopup());

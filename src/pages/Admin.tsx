@@ -76,10 +76,10 @@ export function AdminPage() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <StatCard k="Total defects" v={total} d="live in the program" icon={<IconChart size={16} />} color="var(--brand-text)" bg="var(--brand-soft)" />
-        <StatCard k="Pending triage" v={pending.length} d="new reports" icon={<IconAlert size={16} />} color="#B45309" bg="#FFFBEB" />
-        <StatCard k="Overdue" v={overdue.length} d="past their deadline" icon={<IconClock size={16} />} color="#B91C1C" bg="#FEF2F2" />
-        <StatCard k="Awaiting sign-off" v={toVerify.length} d="repairs to verify" icon={<IconUsers size={16} />} color="#047857" bg="#ECFDF5" />
+        <StatCard k="Total defects" v={total} d="live in the program" icon={<IconChart size={16} />} color="var(--brand-text)" />
+        <StatCard k="Pending triage" v={pending.length} d="new reports" icon={<IconAlert size={16} />} color="#B45309" />
+        <StatCard k="Overdue" v={overdue.length} d="past their deadline" icon={<IconClock size={16} />} color="#B91C1C" />
+        <StatCard k="Awaiting sign-off" v={toVerify.length} d="repairs to verify" icon={<IconUsers size={16} />} color="#047857" />
       </div>
 
       {/* Deadlines needing attention */}
@@ -161,7 +161,7 @@ export function AdminPage() {
       </div>
 
       {/* Contractors table + map */}
-      <div className="grid xl:grid-cols-[minmax(0,1fr)_420px] gap-5 mb-8">
+      <div className="grid xl:grid-cols-[minmax(0,1fr)_420px] gap-5 mb-8 items-start">
         <div className="card">
           <div className="card-head">
             <h3 className="flex-1">Contractor performance</h3>
@@ -185,7 +185,7 @@ export function AdminPage() {
                     <tr key={c.id} className="border-b border-border last:border-0 hover:bg-surface-2">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
-                          <span className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 grid place-items-center text-xs font-bold">{c.abbr}</span>
+                          <span className="w-8 h-8 rounded-full bg-brand-soft text-brand grid place-items-center text-xs font-bold">{c.abbr}</span>
                           <span className="font-semibold text-ink">{c.name}</span>
                         </div>
                       </td>
@@ -202,7 +202,7 @@ export function AdminPage() {
 
         <div className="card p-4">
           <h4 className="mb-3">All defects</h4>
-          <DefectMap defects={defects} height={340} />
+          <DefectMap defects={defects} height={340} legend={false} />
         </div>
       </div>
 

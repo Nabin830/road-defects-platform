@@ -22,8 +22,16 @@ export function DefectsPage() {
   const [type, setType] = useState<DefectType | 'all'>('all');
   const [q, setQ] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
-  useEffect(() => { api.listDefects({}, userId).then(setDefects).catch(() => {}); }, [userId]);
+  useEffect(() => {
+    setLoading(true);
+    api.listDefects({}, userId)
+      .then(d => { setDefects(d); setLoadError(false); })
+      .catch(() => setLoadError(true))
+      .finally(() => setLoading(false));
+  }, [userId]);
 
   const filtered = useMemo(() => {
     return defects.filter(d => {
@@ -39,6 +47,12 @@ export function DefectsPage() {
     });
   }, [defects, status, sevSet, type, q]);
 
+  // What to say when nothing is listed: still loading, failed, nothing reported yet, or filtered out
+  const emptyText = loading ? 'Loading defects…'
+    : loadError ? "Couldn't load defects. Check your connection and refresh the page."
+    : defects.length === 0 ? 'No defects have been reported yet.'
+    : 'No defects match these filters.';
+
   const activeFilters = (status !== 'all' ? 1 : 0) + sevSet.length + (type !== 'all' ? 1 : 0) + (q ? 1 : 0);
   const toggleSev = (s: Severity) => setSevSet(sevSet.includes(s) ? sevSet.filter(x => x !== s) : [...sevSet, s]);
 
@@ -48,7 +62,7 @@ export function DefectsPage() {
         <div>
           <span className="section-label">Public defect map</span>
           <h1 className="mt-1">All reported defects</h1>
-          <p className="text-muted mt-1">{filtered.length} of {defects.length} shown</p>
+          <p className="text-muted mt-1">{loading ? 'Loading…' : `${filtered.length} of ${defects.length} shown`}</p>
         </div>
         <div className="flex gap-1 bg-surface-2 border border-border rounded-btn p-1">
           {([['map', IconMap, 'Map'], ['grid', IconGrid, 'Cards'], ['table', IconTable, 'Table']] as const).map(([v, Ic, l]) => (
@@ -125,10 +139,17 @@ export function DefectsPage() {
 
         {/* Views */}
         <div className="min-h-0">
-          {view === 'map' && <DefectMap defects={filtered} height={620} />}
+          {view === 'map' && (
+            <div className="relative">
+              <DefectMap defects={filtered} height={620} />
+              {filtered.length === 0 && (
+                <div className="absolute left-1/2 top-4 -translate-x-1/2 z-[450] card px-4 py-2.5 text-[13px] text-muted shadow-md pointer-events-none">{emptyText}</div>
+              )}
+            </div>
+          )}
           {view === 'grid' && (
             filtered.length === 0
-              ? <div className="card p-16 text-center text-muted">No defects match these filters.</div>
+              ? <div className="card p-16 text-center text-muted">{emptyText}</div>
               : <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
                   {filtered.map(d => <DefectCard key={d.id} d={d} />)}
                 </div>
@@ -147,7 +168,7 @@ export function DefectsPage() {
                   <tbody>
                     {filtered.map(d => (
                       <tr key={d.id} className="border-b border-border last:border-0 hover:bg-surface-2">
-                        <td className="px-4 py-3 mono text-xs text-muted">
+                        <td className="px-4 py-3 mono text-xs text-muted whitespace-nowrap">
                           <Link to={`/defect/${d.id}`} className="hover:no-underline">{d.id}</Link>
                         </td>
                         <td className="px-4 py-3">
@@ -161,7 +182,7 @@ export function DefectsPage() {
                       </tr>
                     ))}
                     {filtered.length === 0 && (
-                      <tr><td colSpan={7} className="p-10 text-center text-muted">No defects match these filters.</td></tr>
+                      <tr><td colSpan={7} className="p-10 text-center text-muted">{emptyText}</td></tr>
                     )}
                   </tbody>
                 </table>

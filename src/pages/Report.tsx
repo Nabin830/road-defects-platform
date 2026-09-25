@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
+import { photoProblem } from '../lib/image';
 import { reverseGeocode, searchAddress, type PlaceResult } from '../lib/geocode';
 import { useAuth } from '../store/auth';
 import { useUI } from '../store/ui';
 import { DefectMap } from '../components/DefectMap';
-import { TYPES, SEVERITY } from '../lib/constants';
+import { TYPES, SEVERITY, inCouncilArea } from '../lib/constants';
 import { IconSearch, IconCrosshair, IconLeft, IconRight, IconUpload, IconCheck, IconAlert, IconX } from '../lib/icons';
 import type { Defect, DefectType, Severity } from '../lib/types';
 import { SeverityChip } from '../components/Severity';
@@ -21,7 +21,6 @@ function metres(aLat: number, aLng: number, bLat: number, bLng: number) {
 }
 const NEARBY_M = 150;
 
-const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 const TITLE_MIN = 8, TITLE_MAX = 100, DESC_MIN = 20, DESC_MAX = 2000;
 
 /** Rejects keyboard mashing like "ghh" / "aaaaaaa": needs real words, not one repeated character. */
@@ -165,8 +164,8 @@ export function ReportPage() {
 
   function pickPhoto(file: File | undefined | null) {
     if (!file) return;
-    if (!file.type.startsWith('image/')) return toast('warning', 'Not an image', 'Please choose a JPEG or PNG file.');
-    if (file.size > MAX_PHOTO_BYTES) return toast('warning', 'File too large', 'Photos must be under 8MB.');
+    const problem = photoProblem(file);
+    if (problem) return toast('warning', "Can't use that photo", problem);
     if (photoPreview) URL.revokeObjectURL(photoPreview);
     setPhotoFile(file);
     setPhotoPreview(URL.createObjectURL(file));
@@ -184,6 +183,7 @@ export function ReportPage() {
 
   function next() {
     if (step === 1 && (lat == null || lng == null)) return toast('warning', 'Pick a location', 'Tap on the map or use "Use my location".');
+    if (step === 1 && !inCouncilArea(lat!, lng!)) return toast('warning', 'Outside the council area', 'RoadFix only covers roads in the Orange City Council area. Move the pin, or contact the council that looks after that road.');
     if (step === 1 && blocking) return toast('warning', 'Already reported', `${blocking.d.id} was reported ${Math.round(blocking.m)} m away in the last hour. Open it and tap "Back this report" instead.`);
     if (step === 1 && !place.trim()) return toast('warning', 'Add the road name', 'Tell the crew which road or landmark it is near.');
     if (step === 2 && (!type || !sev)) return toast('warning', 'Missing details', 'Choose a type and severity.');
@@ -196,6 +196,7 @@ export function ReportPage() {
     if (lat == null || lng == null || !type || !sev || !titleOk || !descOk) {
       return toast('warning', 'Fill in required fields', 'Something is missing.');
     }
+    if (!inCouncilArea(lat, lng)) return toast('warning', 'Outside the council area', 'Move the pin to a road in the Orange City Council area.');
     if (!photoFile) return toast('warning', 'Add a photo', 'A photo of the defect is required so council can assess it.');
     if (blocking) return toast('warning', 'Already reported', `Open ${blocking.d.id} and tap "Back this report" instead.`);
     if (!userId) return toast('warning', 'Sign in required', 'Create an account or sign in to submit a report.');
@@ -396,7 +397,7 @@ export function ReportPage() {
               <div onClick={() => fileInputRef.current?.click()}
                    onDragOver={(e) => e.preventDefault()}
                    onDrop={(e) => { e.preventDefault(); pickPhoto(e.dataTransfer.files?.[0]); }}
-                   className="p-8 rounded-card border-2 border-dashed cursor-pointer text-center grid place-items-center gap-2 border-border-strong bg-surface-2 hover:border-sky-500 hover:bg-brand-soft">
+                   className="p-8 rounded-card border-2 border-dashed cursor-pointer text-center grid place-items-center gap-2 border-border-strong bg-surface-2 hover:border-brand hover:bg-brand-soft">
                 <IconUpload size={28} className="text-muted" />
                 <div className="text-[14px] font-semibold text-ink-2">Drop a photo here or click to upload</div>
                 <div className="text-[12px] text-muted">JPEG, PNG, or WebP, up to 8MB</div>

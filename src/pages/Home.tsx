@@ -4,17 +4,24 @@ import { api } from '../lib/api';
 import { StatCard } from '../components/StatCard';
 import { DefectMap } from '../components/DefectMap';
 import { DefectCard } from '../components/DefectCard';
-import { IconArrow, IconPlus, IconMap, IconShield, IconTrend, IconChart, IconCamera, IconCrosshair, IconCheckCircle } from '../lib/icons';
+import { IconArrow, IconPlus, IconMap, IconShield, IconCamera, IconCrosshair, IconCheckCircle } from '../lib/icons';
 import type { Defect, PlatformStats } from '../lib/types';
 import { BrandLogo } from '../components/Brand';
+import { useAuth } from '../store/auth';
+import { homeFor } from '../components/ProtectedRoute';
 
 export function HomePage() {
   const [defects, setDefects] = useState<Defect[]>([]);
   const [ps, setPs] = useState<PlatformStats | null>(null);
+  const { authed, role } = useAuth();
+  // Only residents report; council and contractors get a button to their own workspace instead
+  const staff = authed && role !== 'citizen';
+  const primary = staff
+    ? { to: homeFor(role), label: role === 'admin' ? 'Open council overview' : 'Open my jobs' }
+    : { to: '/report', label: 'Report a defect' };
 
   useEffect(() => {
-    api.listDefects({}).then(setDefects).catch(() => {});
-    api.platformStats().then(setPs).catch(() => {});
+    api.listDefects({}).then(d => { setDefects(d); setPs(api.statsFrom(d)); }).catch(() => {});
   }, []);
 
   const stats = [
@@ -42,8 +49,8 @@ export function HomePage() {
               follow every step of the repair. Free for residents.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
-              <Link to="/report" className="btn btn-primary btn-lg hover:no-underline">
-                <IconPlus size={18} /> Report a defect
+              <Link to={primary.to} className="btn btn-primary btn-lg hover:no-underline">
+                {!staff && <IconPlus size={18} />} {primary.label}
               </Link>
               <Link to="/defects" className="btn btn-secondary btn-lg hover:no-underline">
                 <IconMap size={18} /> Browse the map
@@ -75,12 +82,12 @@ export function HomePage() {
         </div>
         <div className="grid md:grid-cols-3 gap-5">
           {[
-            { i: IconCamera, t: 'Snap and pin', d: 'Take a photo, drop a pin, add a sentence. Location and details get to council instantly.', c: 'var(--brand-text)', bg: 'var(--brand-soft)' },
-            { i: IconCrosshair, t: 'Triaged fast', d: 'Council reviews the report and assigns it to a contractor, who accepts the job.', c: '#7C3AED', bg: '#F5F3FF' },
-            { i: IconCheckCircle, t: 'Repair verified', d: 'Follow progress updates on the timeline. Council checks the work before the job is closed.', c: '#059669', bg: '#ECFDF5' },
+            { i: IconCamera, t: 'Snap and pin', d: 'Take a photo, drop a pin, add a sentence. Location and details get to council instantly.', c: 'var(--brand-text)' },
+            { i: IconCrosshair, t: 'Triaged fast', d: 'Council reviews the report and assigns it to a contractor, who accepts the job.', c: '#7C3AED' },
+            { i: IconCheckCircle, t: 'Repair verified', d: 'Follow progress updates on the timeline. Council checks the work before the job is closed.', c: '#059669' },
           ].map((s, i) => (
             <div key={i} className="card p-6">
-              <div className="w-11 h-11 rounded-xl grid place-items-center mb-4" style={{ background: s.bg, color: s.c }}>
+              <div className="w-11 h-11 rounded-xl grid place-items-center mb-4" style={{ background: `color-mix(in srgb, ${s.c} 16%, transparent)`, color: s.c }}>
                 <s.i size={22} />
               </div>
               <h3 className="text-lg mb-2">{s.t}</h3>
@@ -106,17 +113,19 @@ export function HomePage() {
         </section>
       )}
 
-      {/* CTA */}
-      <section className="w-full max-w-[1280px] mx-auto px-6 pb-16">
-        <div className="card p-10 md:p-14 hero-grad text-center">
-          <BrandLogo className="h-12 md:h-14 mx-auto mb-8" />
-          <h2 className="text-3xl md:text-4xl mb-3">See a hazard? Report it now.</h2>
-          <p className="text-ink-2 max-w-xl mx-auto mb-6">Takes about a minute. Council sees it straight away.</p>
-          <Link to="/report" className="btn btn-primary btn-lg hover:no-underline">
-            <IconPlus size={18} /> Report a defect
-          </Link>
-        </div>
-      </section>
+      {/* CTA — residents only */}
+      {!staff && (
+        <section className="w-full max-w-[1280px] mx-auto px-6 pb-16">
+          <div className="card p-10 md:p-14 hero-grad text-center">
+            <BrandLogo className="h-12 md:h-14 mx-auto mb-8" />
+            <h2 className="text-3xl md:text-4xl mb-3">See a hazard? Report it now.</h2>
+            <p className="text-ink-2 max-w-xl mx-auto mb-6">Takes about a minute. Council sees it straight away.</p>
+            <Link to={primary.to} className="btn btn-primary btn-lg hover:no-underline">
+              {!staff && <IconPlus size={18} />} {primary.label}
+            </Link>
+          </div>
+        </section>
+      )}
     </>
   );
 }

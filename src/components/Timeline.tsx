@@ -1,4 +1,5 @@
 import type { RepairUpdate } from '../lib/types';
+import { Photo, PhotoMissing } from './Photo';
 import { relativeTime } from '../lib/utils';
 import { IconCheck, IconClock } from '../lib/icons';
 
@@ -24,8 +25,9 @@ export function Timeline({ updates }: { updates: RepairUpdate[] }) {
               {u.note && <div className="text-[13px] text-ink-2 mt-1.5 whitespace-pre-line">{u.note}</div>}
               {u.photo_url && u.photo_url !== 'photo' && (
                 <a href={u.photo_url} target="_blank" rel="noreferrer" className="block mt-2 w-fit">
-                  <img src={u.photo_url} alt={`Photo: ${u.action}`} loading="lazy"
-                       className="max-h-[180px] max-w-full rounded-lg border border-border object-cover hover:opacity-90" />
+                  <Photo src={u.photo_url} alt={`Photo: ${u.action}`} loading="lazy"
+                         className="max-h-[180px] max-w-full rounded-lg border border-border object-cover hover:opacity-90"
+                         fallback={<PhotoMissing className="h-20 w-40 rounded-lg border border-border" />} />
                 </a>
               )}
               {typeof u.progress === 'number' && u.progress > 0 && (

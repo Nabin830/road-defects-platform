@@ -8,7 +8,6 @@ import { relativeTime } from '../lib/utils';
 import { SlaChip } from '../components/SlaChip';
 import { slaStatus } from '../lib/sla';
 import type { Contractor, Defect } from '../lib/types';
-import vehicleDecal from '../Logos/vehicle-decal.png';
 
 export function ContractorPage() {
   const { profile } = useAuth();
@@ -43,7 +42,6 @@ export function ContractorPage() {
 
   return (
     <main className="w-full max-w-[1280px] mx-auto px-6 py-8">
-      <img src={vehicleDecal} alt="RoadFix" className="w-full h-auto rounded-card mb-6 border border-border" />
       <div className="mb-6">
         <span className="section-label">{contractor?.name || 'Contractor'}</span>
         <h1 className="mt-1">My jobs</h1>

@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { IconCamera, IconX } from '../lib/icons';
+import { photoProblem } from '../lib/image';
 
-const MAX_BYTES = 8 * 1024 * 1024;
-
-/** Optional single-photo picker with preview. Reports the chosen file (or null) to the parent. */
+/** Single-photo picker with preview. Reports the chosen file (or null) to the parent. */
 export function PhotoField({ onChange, label = 'Add a photo' }: { onChange: (f: File | null) => void; label?: string }) {
   const input = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -14,8 +13,8 @@ export function PhotoField({ onChange, label = 'Add a photo' }: { onChange: (f: 
   function pick(f: File | undefined) {
     setError('');
     if (!f) return;
-    if (!f.type.startsWith('image/')) return setError('Please choose a JPEG, PNG or WebP image.');
-    if (f.size > MAX_BYTES) return setError('Photos must be under 8 MB.');
+    const problem = photoProblem(f);
+    if (problem) return setError(problem);
     setPreview(URL.createObjectURL(f));
     onChange(f);
   }
@@ -39,7 +38,7 @@ export function PhotoField({ onChange, label = 'Add a photo' }: { onChange: (f: 
         </div>
       ) : (
         <button type="button" onClick={() => input.current?.click()}
-                className="flex items-center justify-center gap-2 h-20 rounded-lg border-2 border-dashed border-border-strong bg-surface-2 text-[13px] font-semibold text-ink-2 hover:border-sky-500">
+                className="flex items-center justify-center gap-2 h-20 rounded-lg border-2 border-dashed border-border-strong bg-surface-2 text-[13px] font-semibold text-ink-2 hover:border-brand">
           <IconCamera size={18} /> {label}
         </button>
       )}

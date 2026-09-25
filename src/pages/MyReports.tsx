@@ -10,8 +10,11 @@ export function MyReportsPage() {
   const { userId } = useAuth();
   const [mine, setMine] = useState<Defect[]>([]);
   const [tab, setTab] = useState<'all' | 'active' | 'done'>('all');
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => { if (userId) api.myReports(userId).then(setMine).catch(() => {}); }, [userId]);
+  useEffect(() => {
+    if (userId) api.myReports(userId).then(setMine).catch(() => {}).finally(() => setLoading(false));
+  }, [userId]);
 
   const isDone = (d: Defect) => d.status === 'completed' && !!d.verified_at;
   const shown = mine.filter(d => tab === 'all' ? true : tab === 'done' ? isDone(d) : (!isDone(d) && d.status !== 'rejected'));
@@ -22,7 +25,7 @@ export function MyReportsPage() {
         <div>
           <span className="section-label">My reports</span>
           <h1 className="mt-1">Reports you've filed</h1>
-          <p className="text-muted mt-1">{mine.length} total</p>
+          <p className="text-muted mt-1">{loading ? 'Loading…' : `${mine.length} total`}</p>
         </div>
         <Link to="/report" className="btn btn-primary hover:no-underline"><IconPlus size={16} /> New report</Link>
       </div>
@@ -36,10 +39,14 @@ export function MyReportsPage() {
         ))}
       </div>
 
-      {shown.length === 0 ? (
+      {loading ? (
+        <div className="card p-16 text-center text-muted">Loading your reports…</div>
+      ) : shown.length === 0 ? (
         <div className="card p-16 text-center">
-          <p className="text-muted mb-4">{mine.length === 0 ? "You haven't submitted any reports yet." : 'No reports in this tab.'}</p>
-          <Link to="/report" className="btn btn-primary hover:no-underline"><IconPlus size={16} /> Report your first defect</Link>
+          <p className="text-muted">{mine.length === 0 ? "You haven't submitted any reports yet." : 'No reports in this tab.'}</p>
+          {mine.length === 0 && (
+            <Link to="/report" className="btn btn-primary mt-4 hover:no-underline"><IconPlus size={16} /> Report your first defect</Link>
+          )}
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -30,6 +30,8 @@ export function App() {
     return () => window.removeEventListener('focus', onFocus);
   }, [refreshProfile]);
   useEffect(() => { refreshProfile(); }, [loc.pathname, refreshProfile]);
+  // New page → start at the top (a SPA keeps the old scroll position otherwise)
+  useEffect(() => { window.scrollTo(0, 0); }, [loc.pathname]);
   const bareLayout = loc.pathname === '/login' || loc.pathname === '/register';
 
   return (

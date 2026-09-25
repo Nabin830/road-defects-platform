@@ -8,7 +8,8 @@ import { StatusBadge } from '../components/Badge';
 import { SeverityChip } from '../components/Severity';
 import { Timeline } from '../components/Timeline';
 import { PhotoField } from '../components/PhotoField';
-import { IconArrow, IconStar, IconWrench, IconCheck, IconAlert, IconLeft, IconClock } from '../lib/icons';
+import { Photo, PhotoMissing } from '../components/Photo';
+import { IconArrow, IconStar, IconWrench, IconCheck, IconAlert, IconLeft } from '../lib/icons';
 import { typeOf, SEVERITY } from '../lib/constants';
 import { fmt } from '../lib/utils';
 import { slaStatus, dueDate, DEFAULT_FIX_DAYS } from '../lib/sla';
@@ -28,10 +29,12 @@ export function DefectDetailPage() {
   const [voteBusy, setVoteBusy] = useState(false);
   const [following, setFollowing] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
+  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     if (!id) return;
-    api.getDefect(id, userId).then(setDefect).catch(() => setDefect(null));
+    setNotFound(false);
+    api.getDefect(id, userId).then(setDefect).catch(() => { setDefect(null); setNotFound(true); });
     api.listUpdates(id).then(setUpdates).catch(() => setUpdates([]));
     api.listContractors().then(setContractors).catch(() => {});
     if (userId) {
@@ -50,7 +53,16 @@ export function DefectDetailPage() {
     setUpdates(us);
   }
 
-  if (!defect) return <main className="w-full max-w-[1280px] mx-auto px-6 py-8"><div className="card p-10 text-center text-muted">Loading…</div></main>;
+  if (notFound) return (
+    <main className="w-full max-w-[1280px] mx-auto px-6 py-8">
+      <div className="card p-10 text-center">
+        <h2 className="mb-2">Report not found</h2>
+        <p className="text-muted mb-5">There's no report with the ID <span className="mono">{id}</span>. It may have been mistyped or removed.</p>
+        <Link to="/defects" className="btn btn-primary hover:no-underline">See all defects</Link>
+      </div>
+    </main>
+  );
+  if (!defect || defect.id !== id) return <main className="w-full max-w-[1280px] mx-auto px-6 py-8"><div className="card p-10 text-center text-muted">Loading…</div></main>;
 
   const contractor = defect.contractor_id ? contractors.find(c => c.id === defect.contractor_id) : null;
   // Contractors can only act on jobs assigned to their own company
@@ -82,7 +94,9 @@ export function DefectDetailPage() {
       if (!defect || to === defect.severity) return;
       await api.changeSeverity(defect.id, defect.severity, to, userId!);
       await refresh();
-      toast('success', 'Severity updated', `Now ${SEVERITY[to].label} — deadline ${SEVERITY[to].sla}.`);
+      toast('success', 'Severity updated', defect.due_at
+        ? `Now ${SEVERITY[to].label}. The fix-by date council set stays the same.`
+        : `Now ${SEVERITY[to].label} — target ${SEVERITY[to].sla}.`);
     }, 'Could not change severity');
   }
 
@@ -206,15 +220,14 @@ export function DefectDetailPage() {
 
   return (
     <main className="w-full max-w-[1280px] mx-auto px-6 py-8">
-      <button onClick={() => nav(-1)} className="btn btn-ghost btn-sm mb-4"><IconLeft size={14} /> Back</button>
+      <button onClick={() => ((window.history.state?.idx ?? 0) > 0 ? nav(-1) : nav('/defects'))} className="btn btn-ghost btn-sm mb-4"><IconLeft size={14} /> Back</button>
 
       {/* Mobile order: summary → actions → map → timeline. Desktop: two columns. */}
       <div className="grid lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_auto_1fr] gap-6 items-start">
           <div className="card overflow-hidden order-1 lg:order-none lg:col-start-1">
             {defect.photo_url && (
-              <a href={defect.photo_url} target="_blank" rel="noreferrer" className="block bg-surface-2">
-                <img src={defect.photo_url} alt={defect.title} className="w-full max-h-[420px] object-cover" />
-              </a>
+              <Photo src={defect.photo_url} alt={defect.title} className="block w-full max-h-[420px] object-cover bg-surface-2 cursor-zoom-in"
+                     onClick={() => window.open(defect.photo_url!, '_blank', 'noopener')} />
             )}
             <div className="p-6">
               <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -255,7 +268,8 @@ export function DefectDetailPage() {
                   <figure key={p.tag} className="m-0">
                     <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-bg-alt border border-border">
                       {p.src
-                        ? <a href={p.src} target="_blank" rel="noreferrer"><img src={p.src} alt={`${p.tag}: ${defect.title}`} className="absolute inset-0 w-full h-full object-cover" /></a>
+                        ? <a href={p.src} target="_blank" rel="noreferrer"><Photo src={p.src} alt={`${p.tag}: ${defect.title}`} className="absolute inset-0 w-full h-full object-cover"
+                                                                                    fallback={<PhotoMissing className="absolute inset-0" />} /></a>
                         : <div className="absolute inset-0 grid place-items-center text-[13px] text-muted">No photo supplied</div>}
                       <span className={`absolute top-2 left-2 text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${p.tag === 'After' ? 'bg-em-600 text-white' : 'bg-ink text-bg'}`}>{p.tag}</span>
                     </div>
@@ -268,22 +282,15 @@ export function DefectDetailPage() {
 
           {defect.work_instructions && defect.status !== 'pending' && defect.status !== 'rejected' && (
             <div className="card p-6 order-3 lg:order-none lg:col-start-1 border-brand">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <h3 className="flex items-center gap-2"><IconWrench size={18} /> Work order from council</h3>
-                <SlaChip d={defect} className="!text-[13px]" />
-              </div>
+              <h3 className="flex items-center gap-2 mb-3"><IconWrench size={18} /> Work order from council</h3>
               <p className="text-[14.5px] text-ink-2 leading-relaxed whitespace-pre-line">{defect.work_instructions}</p>
-              <div className="mt-4 p-3 rounded-lg bg-brand-soft flex items-center gap-2.5 text-[13.5px]">
-                <IconClock size={16} />
-                <span>Fix by <b>{fmtDue(dueDate(defect))}</b>{contractor ? <> · {contractor.name}</> : null}</span>
-              </div>
             </div>
           )}
 
           <div className="card p-6 order-3 lg:order-none lg:col-start-1">
             <h3 className="mb-4">Location</h3>
             <DefectMap defects={[defect]} height={320} legend={false} />
-            <div className="mt-3 text-[13.5px] text-muted">{defect.road}{defect.suburb ? `, ${defect.suburb}` : ''}</div>
+            <div className="mt-3 text-[13.5px] text-muted">{withSuburb(defect.road, defect.suburb)}</div>
           </div>
 
           {updates.length > 0 && (
@@ -435,6 +442,11 @@ export function DefectDetailPage() {
   );
 }
 
+/** "12 Summer St, Orange" + suburb "Orange" → no repeat of the suburb. */
+function withSuburb(road: string, suburb: string | null) {
+  return suburb && !road.toLowerCase().includes(suburb.toLowerCase()) ? `${road}, ${suburb}` : road;
+}
+
 /* Modals */
 function fmtDue(d: Date) {
   return d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
@@ -442,11 +454,12 @@ function fmtDue(d: Date) {
 
 function AssignModal({ contractors, severity, initialInstructions, onPick, onCancel }: {
   contractors: Contractor[]; severity: Sev; initialInstructions: string;
-  onPick: (id: string, instructions: string, days: number) => void; onCancel: () => void;
+  onPick: (id: string, instructions: string, days: number) => Promise<void> | void; onCancel: () => void;
 }) {
   const [selected, setSelected] = useState<string>('');
   const [instructions, setInstructions] = useState(initialInstructions);
   const [days, setDays] = useState(String(DEFAULT_FIX_DAYS[severity]));
+  const [busy, setBusy] = useState(false);
   const n = Math.floor(Number(days));
   const daysOk = Number.isFinite(n) && n >= 1 && n <= 365;
   const ready = !!selected && instructions.trim().length >= 10 && daysOk;
@@ -495,8 +508,9 @@ function AssignModal({ contractors, severity, initialInstructions, onPick, onCan
       </div>
       <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
         <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-        <button className="btn btn-primary" onClick={() => ready && onPick(selected, instructions.trim(), n)} disabled={!ready}
-                title={ready ? undefined : 'Write the work to do (at least 10 characters), set the days, and pick a contractor'}>Assign</button>
+        <button className="btn btn-primary" disabled={!ready || busy}
+                onClick={async () => { if (!ready) return; setBusy(true); await onPick(selected, instructions.trim(), n); setBusy(false); }}
+                title={ready ? undefined : 'Write the work to do (at least 10 characters), set the days, and pick a contractor'}>{busy ? 'Assigning…' : 'Assign'}</button>
       </footer>
     </>
   );
@@ -504,7 +518,7 @@ function AssignModal({ contractors, severity, initialInstructions, onPick, onCan
 
 function AddUpdateModal({ onSubmit, onCancel, currentProgress }: { onSubmit: (note: string, progress: number, photo: File) => Promise<void> | void; onCancel: () => void; currentProgress: number }) {
   const [note, setNote] = useState('');
-  const [progress, setProgress] = useState(currentProgress);
+  const [progress, setProgress] = useState(Math.min(currentProgress, 95));
   const [photo, setPhoto] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   return (
@@ -521,7 +535,7 @@ function AddUpdateModal({ onSubmit, onCancel, currentProgress }: { onSubmit: (no
             <label className="label" htmlFor="upd-prog">Progress</label>
             <span className="mono text-sm font-bold">{progress}%</span>
           </div>
-          <input id="upd-prog" type="range" min={0} max={100} step={5} value={progress}
+          <input id="upd-prog" type="range" min={0} max={95} step={5} value={Math.min(progress, 95)}
                  onChange={(e) => setProgress(Number(e.target.value))} className="w-full accent-brand" />
         </div>
         <PhotoField onChange={setPhoto} label="Site photo (required)" />
@@ -537,8 +551,9 @@ function AddUpdateModal({ onSubmit, onCancel, currentProgress }: { onSubmit: (no
   );
 }
 
-function RejectModal({ onSubmit, onCancel }: { onSubmit: (reason: string) => void; onCancel: () => void }) {
+function RejectModal({ onSubmit, onCancel }: { onSubmit: (reason: string) => Promise<void> | void; onCancel: () => void }) {
   const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
   return (
     <>
       <header className="p-5 pb-0"><h3>Reject this report</h3></header>
@@ -553,14 +568,16 @@ function RejectModal({ onSubmit, onCancel }: { onSubmit: (reason: string) => voi
       </div>
       <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
         <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-        <button className="btn btn-danger" onClick={() => reason.trim() && onSubmit(reason.trim())} disabled={!reason.trim()}>Reject report</button>
+        <button className="btn btn-danger" disabled={!reason.trim() || busy}
+                onClick={async () => { if (!reason.trim()) return; setBusy(true); await onSubmit(reason.trim()); setBusy(false); }}>{busy ? 'Saving…' : 'Reject report'}</button>
       </footer>
     </>
   );
 }
 
-function DeclineModal({ onSubmit, onCancel }: { onSubmit: (reason: string) => void; onCancel: () => void }) {
+function DeclineModal({ onSubmit, onCancel }: { onSubmit: (reason: string) => Promise<void> | void; onCancel: () => void }) {
   const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
   return (
     <>
       <header className="p-5 pb-0"><h3>Decline this job</h3></header>
@@ -575,14 +592,16 @@ function DeclineModal({ onSubmit, onCancel }: { onSubmit: (reason: string) => vo
       </div>
       <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
         <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-        <button className="btn btn-danger" onClick={() => reason.trim() && onSubmit(reason.trim())} disabled={!reason.trim()}>Decline job</button>
+        <button className="btn btn-danger" disabled={!reason.trim() || busy}
+                onClick={async () => { if (!reason.trim()) return; setBusy(true); await onSubmit(reason.trim()); setBusy(false); }}>{busy ? 'Saving…' : 'Decline job'}</button>
       </footer>
     </>
   );
 }
 
-function ReworkModal({ onSubmit, onCancel }: { onSubmit: (note: string) => void; onCancel: () => void }) {
+function ReworkModal({ onSubmit, onCancel }: { onSubmit: (note: string) => Promise<void> | void; onCancel: () => void }) {
   const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
   return (
     <>
       <header className="p-5 pb-0"><h3>Send back for rework</h3></header>
@@ -597,7 +616,8 @@ function ReworkModal({ onSubmit, onCancel }: { onSubmit: (note: string) => void;
       </div>
       <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
         <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-        <button className="btn btn-danger" onClick={() => note.trim() && onSubmit(note.trim())} disabled={!note.trim()}>Send back</button>
+        <button className="btn btn-danger" disabled={!note.trim() || busy}
+                onClick={async () => { if (!note.trim()) return; setBusy(true); await onSubmit(note.trim()); setBusy(false); }}>{busy ? 'Saving…' : 'Send back'}</button>
       </footer>
     </>
   );

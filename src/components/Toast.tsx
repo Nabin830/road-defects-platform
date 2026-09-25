@@ -8,10 +8,10 @@ export function ToastHost() {
       {toasts.map(t => {
         const color = t.kind === 'success' ? 'var(--em-600, #059669)'
                     : t.kind === 'error'   ? '#DC2626'
-                    : t.kind === 'warning' ? '#F59E0B' : '#0EA5E9';
+                    : t.kind === 'warning' ? '#F59E0B' : '#F7862E';
         const borderL = t.kind === 'success' ? 'border-l-em-600'
                       : t.kind === 'error'   ? 'border-l-rd-600'
-                      : t.kind === 'warning' ? 'border-l-am-500' : 'border-l-sky-500';
+                      : t.kind === 'warning' ? 'border-l-am-500' : 'border-l-brand';
         const Icon = t.kind === 'success' ? IconCheckCircle : t.kind === 'error' ? IconAlert : t.kind === 'warning' ? IconAlert : IconBell;
         return (
           <div key={t.id}

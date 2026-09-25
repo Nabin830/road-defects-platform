@@ -4,6 +4,7 @@ import { relativeTime } from '../lib/utils';
 import { StatusBadge } from './Badge';
 import { SeverityChip } from './Severity';
 import { MapThumb } from './MapThumb';
+import { Photo } from './Photo';
 import { SlaChip } from './SlaChip';
 import { typeOf } from '../lib/constants';
 
@@ -11,12 +12,9 @@ export function DefectCard({ d }: { d: Defect }) {
   return (
     <Link to={`/defect/${d.id}`} className="card card-hover overflow-hidden group hover:no-underline">
       <div className="relative aspect-video">
-        {d.photo_url ? (
-          <img src={d.photo_url} alt={d.title} className="absolute inset-0 w-full h-full object-cover" />
-        ) : (
-          <MapThumb lat={d.latitude} lng={d.longitude} severity={d.severity}
-                    label={`${typeOf(d.defect_type).label} — ${d.road}`} className="absolute inset-0 border-b border-border" />
-        )}
+        <Photo src={d.photo_url ?? undefined} alt={d.title} className="absolute inset-0 w-full h-full object-cover"
+               fallback={<MapThumb lat={d.latitude} lng={d.longitude} severity={d.severity}
+                                   label={`${typeOf(d.defect_type).label} — ${d.road}`} className="absolute inset-0 border-b border-border" />} />
         <div className="absolute top-2 right-2"><StatusBadge status={d.status} verified={!!d.verified_at} /></div>
       </div>
       <div className="p-4 space-y-2">

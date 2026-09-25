@@ -1,5 +1,6 @@
 import { HAS_SUPABASE, supabase } from './supabase';
 import { daysAgo, newDefectId } from './utils';
+import { shrinkPhoto } from './image';
 import type {
   Defect, DBDefect, Contractor, Profile, RepairUpdate,
   DefectFilters, SignUpInput, SignInInput, CreateDefectInput, AdminStats,
@@ -140,7 +141,11 @@ export const api = {
     if (filters.status && filters.status !== 'all') q = q.eq('status', filters.status);
     if (filters.severity && filters.severity.length) q = q.in('severity', filters.severity);
     if (filters.type && filters.type !== 'all') q = q.eq('defect_type', filters.type);
-    if (filters.q) q = q.or(`title.ilike.%${filters.q}%,road.ilike.%${filters.q}%,description.ilike.%${filters.q}%`);
+    if (filters.q) {
+      // Quote the value so commas, brackets and dots in a search (e.g. "Summer St, Orange") don't break the filter
+      const v = `"%${filters.q.replace(/[\\"]/g, '\\$&').replace(/[%_]/g, '\\$&')}%"`;
+      q = q.or(`title.ilike.${v},road.ilike.${v},description.ilike.${v}`);
+    }
     const { data, error } = await q;
     if (error) throw error;
     return (data as DBDefect[] || []).map(r => mapDefect(r, myUserId));
@@ -213,7 +218,9 @@ export const api = {
     };
     const { data, error } = await supabase.from('defects').insert(insert).select().single();
     if (error) throw error;
-    await this.addUpdate(id, { action: 'Report submitted', note: 'Report captured with location and description.', progress: 0 }, userId, 'citizen');
+    // The report is saved at this point — a failed timeline entry mustn't make it look like it failed
+    await this.addUpdate(id, { action: 'Report submitted', note: 'Report captured with location and description.', progress: 0 }, userId, 'citizen')
+      .catch(() => {});
     return mapDefect(data as DBDefect, userId);
   },
 
@@ -366,7 +373,10 @@ export const api = {
 
   /** Real, publicly-derivable platform stats for the homepage (no fabricated numbers). */
   async platformStats(): Promise<import('./types').PlatformStats> {
-    const defects = await this.listDefects({});
+    return this.statsFrom(await this.listDefects({}));
+  },
+
+  statsFrom(defects: Defect[]): import('./types').PlatformStats {
     const totalReported = defects.length;
     const totalCompleted = defects.filter(d => d.status === 'completed' && d.verified_at).length;
     const closureRate = totalReported ? Math.round((totalCompleted / totalReported) * 100) : 0;
@@ -506,9 +516,11 @@ export const api = {
   },
 
   /* ── photo storage ──────────────────────────────────────────────── */
-  async uploadPhoto(file: File, userId: string): Promise<string> {
-    if (!HAS_SUPABASE) return URL.createObjectURL(file); // local preview only, not persisted
-    const ext = file.name.split('.').pop() || 'jpg';
+  async uploadPhoto(original: File, userId: string): Promise<string> {
+    if (!HAS_SUPABASE) return URL.createObjectURL(original); // local preview only, not persisted
+    const file = await shrinkPhoto(original);
+    if (file.size > 8 * 1024 * 1024) throw new Error('That photo is too large to upload. Please choose a smaller one.');
+    const ext = file.type === 'image/jpeg' ? 'jpg' : file.type.split('/')[1] || 'jpg';
     const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const { error } = await supabase.storage.from('defect-photos').upload(path, file, {
       cacheControl: '3600', upsert: false, contentType: file.type || 'image/jpeg',

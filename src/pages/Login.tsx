@@ -11,7 +11,7 @@ export function LoginPage() {
   const nav = useNavigate();
   // Page the user was sent here from (e.g. /report), so we can return them after sign-in
   const from = (useLocation().state as { from?: string } | null)?.from;
-  const { signIn, setDemoRole, role } = useAuth();
+  const { signIn, setDemoRole } = useAuth();
   const { toast } = useUI();
 
   const [email, setEmail] = useState('');

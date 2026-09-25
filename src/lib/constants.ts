@@ -1,6 +1,10 @@
 import type { DefectStatus, Severity, DefectType } from './types';
 
 export const ORANGE = { lat: -33.2839, lng: 149.0988 };
+/** Generous box around the Orange City Council area — reports outside it are for another council. */
+export const COUNCIL_AREA = { north: -33.12, south: -33.48, west: 148.88, east: 149.30 };
+export const inCouncilArea = (lat: number, lng: number) =>
+  lat <= COUNCIL_AREA.north && lat >= COUNCIL_AREA.south && lng >= COUNCIL_AREA.west && lng <= COUNCIL_AREA.east;
 
 export const TYPES: { id: DefectType; label: string }[] = [
   { id: 'pothole',  label: 'Pothole' },
