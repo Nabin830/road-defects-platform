@@ -1,3 +1,11 @@
+/** Photo links come from the database, so never trust them blindly: only web, blob and same-site
+ *  addresses are used — a "javascript:" link would otherwise run code when someone clicks the photo. */
+export function safePhotoUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const u = url.trim();
+  return /^(https?:\/\/|blob:|\/(?!\/))/i.test(u) ? u : null;
+}
+
 export function relativeTime(iso: string): string {
   const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
   if (s < 60) return 'just now';

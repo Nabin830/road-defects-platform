@@ -1,5 +1,5 @@
 import { HAS_SUPABASE, supabase } from './supabase';
-import { daysAgo, newDefectId } from './utils';
+import { daysAgo, newDefectId, safePhotoUrl } from './utils';
 import { shrinkPhoto } from './image';
 import type {
   Defect, DBDefect, Contractor, Profile, RepairUpdate,
@@ -21,6 +21,7 @@ const DEMO_UPDATES: Record<string, Array<Omit<RepairUpdate, 'id'>>> = {};
 function mapDefect(r: DBDefect, myUserId: string | null): Defect {
   return {
     ...r,
+    photo_url: safePhotoUrl(r.photo_url),
     latitude: typeof r.latitude === 'string' ? parseFloat(r.latitude) : r.latitude,
     longitude: typeof r.longitude === 'string' ? parseFloat(r.longitude) : r.longitude,
     daysAgo: daysAgo(r.reported_at),
@@ -311,7 +312,7 @@ export const api = {
     if (!HAS_SUPABASE) return demoUpdates[defectId] || [];
     const { data, error } = await supabase.from('repair_updates').select('*').eq('defect_id', defectId).order('created_at', { ascending: true });
     if (error) throw error;
-    return (data as RepairUpdate[]) || [];
+    return ((data as RepairUpdate[]) || []).map(u => ({ ...u, photo_url: safePhotoUrl(u.photo_url) }));
   },
 
   async addUpdate(
