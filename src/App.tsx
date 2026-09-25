@@ -64,8 +64,9 @@ export function App() {
             <Route path="/admin" element={<ProtectedRoute allow={['admin']}><AdminPage /></ProtectedRoute>} />
             <Route path="*" element={
               <main className="w-full max-w-[600px] mx-auto px-6 py-20 text-center">
-                <h1>404</h1>
-                <p className="text-muted mt-2">That page doesn't exist.</p>
+                <h1>Page not found</h1>
+                <p className="text-muted mt-2 mb-6">That page doesn't exist. It may have moved, or the link was mistyped.</p>
+                <a href="#/" className="btn btn-primary hover:no-underline">Go to the home page</a>
               </main>
             } />
           </Routes>

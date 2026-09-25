@@ -49,7 +49,7 @@ export function LoginPage() {
   if (alreadyIn) return <Navigate to={homeFor(alreadyIn)} replace />;
 
   return (
-    <div className="min-h-screen grid md:grid-cols-2">
+    <main className="min-h-screen grid md:grid-cols-2">
       {/* Left brand panel */}
       <div className="hidden md:flex flex-col justify-between p-10 hero-grad">
         <Link to="/" className="self-start hover:no-underline" aria-label="RoadFix home">
@@ -114,6 +114,6 @@ export function LoginPage() {
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
