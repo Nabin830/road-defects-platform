@@ -19,7 +19,7 @@ export function AdminPage() {
   const [contractors, setContractors] = useState<Contractor[]>([]);
 
   useEffect(() => {
-    api.listDefects({}).then(setDefects).catch(() => {});
+    api.listDefects({}).then(setDefects).catch(() => toast('error', "Couldn't load reports", 'Check your connection, then refresh the page.'));
     api.listContractors().then(setContractors).catch(() => {});
   }, []);
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../store/auth';
+import { useUI } from '../store/ui';
 import { SeverityChip } from '../components/Severity';
 import { StatusBadge } from '../components/Badge';
 import { relativeTime } from '../lib/utils';
@@ -13,13 +14,20 @@ export function ContractorPage() {
   const { profile } = useAuth();
   const [rows, setRows] = useState<Defect[]>([]);
   const [contractor, setContractor] = useState<Contractor | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const { toast } = useUI();
   const contractorId = profile?.contractor_id || null;
 
   useEffect(() => {
     if (!contractorId) { setRows([]); setContractor(null); return; }
-    api.contractorQueue(contractorId).then(setRows).catch(() => {});
+    setLoading(true);
+    setFailed(false);
+    api.contractorQueue(contractorId).then(setRows)
+      .catch(() => { setFailed(true); toast('error', "Couldn't load your jobs", 'Check your connection, then refresh the page.'); })
+      .finally(() => setLoading(false));
     api.listContractors().then(list => setContractor(list.find(c => c.id === contractorId) || null)).catch(() => {});
-  }, [contractorId]);
+  }, [contractorId, toast]);
 
   const assigned = rows.filter(r => r.status === 'assigned');
   const progress = rows.filter(r => r.status === 'progress');
@@ -46,7 +54,7 @@ export function ContractorPage() {
         <span className="section-label">{contractor?.name || 'Contractor'}</span>
         <h1 className="mt-1">My jobs</h1>
         <p className="text-muted mt-1">
-          {assigned.length + progress.length === 0
+          {loading ? 'Loading your jobs…' : failed ? "Couldn't load your jobs. Check your connection and refresh." : assigned.length + progress.length === 0
             ? 'No active jobs right now. New jobs from council will appear here.'
             : `${assigned.length + progress.length} active job${assigned.length + progress.length === 1 ? '' : 's'}`}
           {needsResponse > 0 && <> · <b className="text-am-700">{needsResponse} waiting for your response</b></>}

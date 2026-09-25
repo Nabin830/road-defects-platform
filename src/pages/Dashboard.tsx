@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../store/auth';
+import { useUI } from '../store/ui';
 import { StatCard } from '../components/StatCard';
 import { DefectMap } from '../components/DefectMap';
 import { StatusBadge } from '../components/Badge';
@@ -15,12 +16,15 @@ export function DashboardPage() {
   const [mine, setMine] = useState<Defect[]>([]);
   const [all, setAll] = useState<Defect[]>([]);
   const [loading, setLoading] = useState(true);
+  const { toast } = useUI();
 
   useEffect(() => {
     if (!userId) return;
-    api.myReports(userId).then(setMine).catch(() => {}).finally(() => setLoading(false));
+    api.myReports(userId).then(setMine)
+      .catch(() => toast('error', "Couldn't load your reports", 'Check your connection, then refresh the page.'))
+      .finally(() => setLoading(false));
     api.listDefects({}, userId).then(setAll).catch(() => {});
-  }, [userId, demoRole]);
+  }, [userId, demoRole, toast]);
 
   const c = {
     total: mine.length,

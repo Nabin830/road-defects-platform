@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../store/auth';
+import { useUI } from '../store/ui';
 import { DefectCard } from '../components/DefectCard';
 import { IconPlus } from '../lib/icons';
 import type { Defect } from '../lib/types';
@@ -11,10 +12,13 @@ export function MyReportsPage() {
   const [mine, setMine] = useState<Defect[]>([]);
   const [tab, setTab] = useState<'all' | 'active' | 'done'>('all');
   const [loading, setLoading] = useState(true);
+  const { toast } = useUI();
 
   useEffect(() => {
-    if (userId) api.myReports(userId).then(setMine).catch(() => {}).finally(() => setLoading(false));
-  }, [userId]);
+    if (userId) api.myReports(userId).then(setMine)
+      .catch(() => toast('error', "Couldn't load your reports", 'Check your connection, then refresh the page.'))
+      .finally(() => setLoading(false));
+  }, [userId, toast]);
 
   const isDone = (d: Defect) => d.status === 'completed' && !!d.verified_at;
   const shown = mine.filter(d => tab === 'all' ? true : tab === 'done' ? isDone(d) : (!isDone(d) && d.status !== 'rejected'));

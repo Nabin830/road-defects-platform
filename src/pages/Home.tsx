@@ -8,12 +8,14 @@ import { IconArrow, IconPlus, IconMap, IconShield, IconCamera, IconCrosshair, Ic
 import type { Defect, PlatformStats } from '../lib/types';
 import { BrandLogo } from '../components/Brand';
 import { useAuth } from '../store/auth';
+import { useUI } from '../store/ui';
 import { homeFor } from '../components/ProtectedRoute';
 
 export function HomePage() {
   const [defects, setDefects] = useState<Defect[]>([]);
   const [ps, setPs] = useState<PlatformStats | null>(null);
   const { authed, role } = useAuth();
+  const { toast } = useUI();
   // Only residents report; council and contractors get a button to their own workspace instead
   const staff = authed && role !== 'citizen';
   const primary = staff
@@ -21,8 +23,9 @@ export function HomePage() {
     : { to: '/report', label: 'Report a defect' };
 
   useEffect(() => {
-    api.listDefects({}).then(d => { setDefects(d); setPs(api.statsFrom(d)); }).catch(() => {});
-  }, []);
+    api.listDefects({}).then(d => { setDefects(d); setPs(api.statsFrom(d)); })
+      .catch(() => toast('error', "Couldn't load the latest reports", 'Check your connection, then refresh the page.'));
+  }, [toast]);
 
   const stats = [
     { v: ps ? ps.totalReported.toLocaleString() : '—', k: 'Defects reported', d: 'all time' },

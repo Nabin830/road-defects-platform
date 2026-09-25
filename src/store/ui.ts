@@ -49,6 +49,8 @@ export const useUI = create<UIState>((set, get) => ({
     set({ sim: s });
   },
   toast(kind, title, message) {
+    // The same message twice in a row (double click, retried load) shows once
+    if (get().toasts.some(t => t.kind === kind && t.title === title && t.message === message)) return;
     const id = ++toastSeq;
     set({ toasts: [...get().toasts, { id, kind, title, message }] });
     setTimeout(() => get().dismissToast(id), 5000);
