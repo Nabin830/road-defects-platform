@@ -88,6 +88,25 @@ Then tell the person their temporary password in person or by phone, and ask the
 - **Duplicates**: when reporting, open reports within 150 m of the pin are shown so residents can back
   an existing report instead of filing a new one.
 
+### Updating a database that already has data
+
+`00-all-in-one.sql` wipes everything. To upgrade an existing database instead, run these in the SQL
+Editor, in order, skipping any you've already run. Each keeps your data:
+
+| File | What it adds |
+| --- | --- |
+| `01-work-orders.sql` | Work orders and council-set fix-by dates |
+| `02-upgrades.sql` | Spam limits and the address lookup cache |
+| `03-fix-length-check.sql` | Lets older short reports be updated again |
+| `04-workflow-rules.sql` | Required photos, stage order, duplicate blocking |
+| `05-anti-tamper.sql` | Stops people bypassing the website to fake data (see below) |
+
+**Why 05 matters:** anyone can send requests straight to the database without using the website.
+05 makes the database enforce what each role may change: new reports always start clean and inside
+the council area, residents only edit their own pending report's wording/photo/location, contractors
+only move their own jobs along, timeline entries must match the poster's real role, photo links must
+point at the RoadFix photo bucket, and votes stay private.
+
 ## 4. Turn off email confirmation (required)
 
 **Authentication → Providers → Email → Confirm email → OFF**
