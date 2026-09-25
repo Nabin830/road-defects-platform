@@ -71,7 +71,9 @@ export function ReportsPage() {
     const reportedInRange = defects.filter(d => inRange(d.reported_at));
     const verifiedInRange = defects.filter(d => inRange(d.verified_at));
     const fixDays = verifiedInRange.map(d => days(d.reported_at, d.verified_at!));
-    const onTime = verifiedInRange.filter(d => +new Date(d.verified_at!) <= +dueDate(d)).length;
+    // On time = the contractor finished by the fix-by date (council's later sign-off doesn't count against them)
+    const finishedAt = (d: Defect) => new Date(lastComplete.get(d.id) ?? d.verified_at!);
+    const onTime = verifiedInRange.filter(d => +finishedAt(d) <= +dueDate(d)).length;
     const assignDays = reportedInRange.filter(d => firstAssigned.has(d.id)).map(d => days(d.reported_at, firstAssigned.get(d.id)!));
 
     const byType = TYPES.map(t => ({ label: t.label, value: reportedInRange.filter(d => d.defect_type === t.id).length }))
@@ -88,7 +90,7 @@ export function ReportsPage() {
         open: jobs.filter(d => d.status === 'assigned' || d.status === 'progress').length,
         overdue: jobs.filter(d => slaStatus(d)?.overdue).length,
         verified: done.length,
-        onTime: pct(done.filter(d => +new Date(d.verified_at!) <= +dueDate(d)).length, done.length),
+        onTime: pct(done.filter(d => +finishedAt(d) <= +dueDate(d)).length, done.length),
         turnaround: median(turnaround),
       };
     }).sort((a, b) => b.verified - a.verified || b.open - a.open);
@@ -113,7 +115,7 @@ export function ReportsPage() {
     { label: 'Reports received', value: k.received.toLocaleString(), note: `last ${range} months` },
     { label: 'Repairs verified', value: k.verified.toLocaleString(), note: `last ${range} months` },
     { label: 'Median time to fix', value: k.medianFix == null ? '—' : duration(k.medianFix), note: 'report → verified' },
-    { label: 'Fixed on time', value: k.onTime == null ? '—' : `${k.onTime}%`, note: 'verified within deadline' },
+    { label: 'Fixed on time', value: k.onTime == null ? '—' : `${k.onTime}%`, note: 'finished by the fix-by date' },
     { label: 'Median time to assign', value: k.medianAssign == null ? '—' : duration(k.medianAssign), note: 'report → contractor assigned' },
   ];
 

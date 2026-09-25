@@ -89,16 +89,16 @@ export function ProfilePage() {
         <div className="card-body grid gap-4">
           <div className="grid gap-1.5">
             <label className="label" htmlFor="pf-name">Full name</label>
-            <input id="pf-name" className="input" value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" />
+            <input id="pf-name" className="input" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" />
           </div>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="grid gap-1.5">
               <label className="label" htmlFor="pf-phone">Phone <span className="text-muted font-normal">(optional)</span></label>
-              <input id="pf-phone" className="input" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" inputMode="tel" />
+              <input id="pf-phone" className="input" maxLength={30} value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" inputMode="tel" />
             </div>
             <div className="grid gap-1.5">
               <label className="label" htmlFor="pf-suburb">Suburb <span className="text-muted font-normal">(optional)</span></label>
-              <input id="pf-suburb" className="input" value={suburb} onChange={(e) => setSuburb(e.target.value)} autoComplete="address-level2" />
+              <input id="pf-suburb" className="input" maxLength={80} value={suburb} onChange={(e) => setSuburb(e.target.value)} autoComplete="address-level2" />
             </div>
           </div>
           <div className="grid gap-1.5">
@@ -109,7 +109,7 @@ export function ProfilePage() {
           {company && (
             <div className="grid gap-1.5 pt-2 border-t border-border">
               <label className="label flex items-center gap-1.5" htmlFor="pf-company"><IconTruck size={14} /> Company name</label>
-              <input id="pf-company" className="input" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
+              <input id="pf-company" className="input" maxLength={80} minLength={2} value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
               <span className="hint">This is the name council sees when assigning jobs.</span>
             </div>
           )}

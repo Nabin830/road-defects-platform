@@ -98,7 +98,7 @@ export function RegisterPage() {
 
             <div className="grid gap-1.5">
               <label className="label" htmlFor="rg-n">{role === 'contractor' ? 'Company name' : 'Full name'}</label>
-              <input id="rg-n" className="input" value={name} onChange={(e) => setName(e.target.value)}
+              <input id="rg-n" className="input" maxLength={80} value={name} onChange={(e) => setName(e.target.value)}
                      placeholder={role === 'contractor' ? 'Company name, e.g. Summit Asphalt' : 'Your full name'} autoComplete="name" required />
             </div>
 

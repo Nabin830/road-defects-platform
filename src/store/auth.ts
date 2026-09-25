@@ -21,6 +21,14 @@ interface AuthState {
   authed: boolean;
 }
 
+/** Load a profile, retrying once — a single failed request mustn't demote council to a resident view. */
+async function loadProfile(uid: string): Promise<Profile | null> {
+  const first = await api.getProfile(uid);
+  if (first) return first;
+  await new Promise(r => setTimeout(r, 800));
+  return api.getProfile(uid);
+}
+
 export const useAuth = create<AuthState>((set, get) => ({
   ready: false,
   userId: null,
@@ -43,14 +51,17 @@ export const useAuth = create<AuthState>((set, get) => ({
       // so load the profile on the next tick.
       const uid = session.user.id;
       setTimeout(async () => {
-        const profile = await api.getProfile(uid);
+        const loaded = await loadProfile(uid);
+        // Token refreshes re-run this; if the profile can't be read, keep what we already know
+        const prev = get();
+        const profile = loaded ?? (prev.userId === uid ? prev.profile : null);
         set({ userId: uid, profile, role: profile?.role || 'citizen', authed: true });
       }, 0);
     });
 
     const { data } = await supabase.auth.getSession();
     if (data.session) {
-      const profile = await api.getProfile(data.session.user.id);
+      const profile = await loadProfile(data.session.user.id);
       set({ ready: true, userId: data.session.user.id, profile, role: profile?.role || 'citizen', authed: true });
     } else {
       set({ ready: true });

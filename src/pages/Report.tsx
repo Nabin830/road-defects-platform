@@ -114,6 +114,15 @@ export function ReportPage() {
     setQuery(r.label); setSearchOpen(false);
   }
 
+  // Warn before a refresh or tab close throws away a half-filled report
+  const dirty = !busy && (lat != null || !!title.trim() || !!desc.trim() || !!photoFile);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+
   useEffect(() => () => { if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current); }, []);
 
   function pickSpot(la: number, ln: number) {
@@ -283,7 +292,7 @@ export function ReportPage() {
                 Street address or landmark <span className="text-rd-600">*</span>
                 {lookingUp && <span className="ml-2 font-normal text-muted">Finding address…</span>}
               </label>
-              <input id="place-field" className="input" value={place} onChange={(e) => { setPlace(e.target.value); placeAuto.current = !e.target.value.trim(); }}
+              <input id="place-field" className="input" maxLength={200} value={place} onChange={(e) => { setPlace(e.target.value); placeAuto.current = !e.target.value.trim(); }}
                      placeholder="e.g. Summer St near Anson St, Orange" />
             </div>
             <button type="button" onClick={useMyLocation} disabled={locating} className="btn btn-secondary">

@@ -47,7 +47,9 @@ export function AdminPage() {
       ['Verified', d => d.verified_at], ['Reject reason', d => d.reject_reason],
     ];
     const esc = (v: unknown) => {
-      const s = v == null ? '' : String(v);
+      let s = v == null ? '' : String(v);
+      // Text typed by the public could start with = + - @ and run as a formula in Excel — neutralise it
+      if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
     const csv = [cols.map(c => c[0]).join(','), ...defects.map(d => cols.map(([, get]) => esc(get(d))).join(','))].join('\n');

@@ -320,10 +320,14 @@ export function DefectDetailPage() {
                         className={`btn btn-block ${following ? 'btn-success' : 'btn-primary'}`}>
                   <IconStar size={16} /> {following ? 'Following' : 'Follow updates'}
                 </button>
-                <button onClick={toggleVote} disabled={voteBusy}
-                        className={`btn btn-block ${voted ? 'btn-success' : 'btn-secondary'}`}>
-                  {voted ? 'Backed — tap to remove' : 'Back this report'}
-                </button>
+                {defect.mine ? (
+                  <p className="text-[13px] text-muted">This is your report. Others can back it to raise its priority.</p>
+                ) : defect.status !== 'completed' && defect.status !== 'rejected' && (
+                  <button onClick={toggleVote} disabled={voteBusy}
+                          className={`btn btn-block ${voted ? 'btn-success' : 'btn-secondary'}`}>
+                    {voted ? 'Backed — tap to remove' : 'Back this report'}
+                  </button>
+                )}
               </>
             )}
             {awaitingResponse && (
@@ -469,7 +473,7 @@ function AssignModal({ contractors, severity, initialInstructions, onPick, onCan
       <div className="p-4 px-5 pt-3 max-h-[70vh] overflow-y-auto">
         <div className="grid gap-1.5 mb-4">
           <label className="label" htmlFor="wo-text">What needs to be done? <span className="text-rd-600">*</span></label>
-          <textarea id="wo-text" className="textarea" value={instructions} onChange={(e) => setInstructions(e.target.value)}
+          <textarea id="wo-text" className="textarea" maxLength={2000} value={instructions} onChange={(e) => setInstructions(e.target.value)}
                     placeholder="e.g. Cut out and patch the pothole with hot-mix asphalt, about 1 m². Put up traffic control, repaint the lane line after, and upload before/after photos." />
           <span className="text-[11.5px] text-muted">The contractor sees this before accepting the job.</span>
         </div>
@@ -527,7 +531,7 @@ function AddUpdateModal({ onSubmit, onCancel, currentProgress }: { onSubmit: (no
       <div className="p-4 px-5 pt-3 space-y-4">
         <div className="grid gap-1.5">
           <label className="label" htmlFor="upd-note">What's happening on site?</label>
-          <textarea id="upd-note" className="textarea" value={note} onChange={(e) => setNote(e.target.value)}
+          <textarea id="upd-note" className="textarea" maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)}
                     placeholder="e.g. Crew mobilised, excavation started, patch curing overnight…" />
         </div>
         <div className="grid gap-1.5">
@@ -564,7 +568,7 @@ function RejectModal({ onSubmit, onCancel }: { onSubmit: (reason: string) => Pro
             <button key={r} onClick={() => setReason(r)} className="chip">{r}</button>
           ))}
         </div>
-        <textarea className="textarea" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Explain why…" />
+        <textarea className="textarea" maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Explain why…" />
       </div>
       <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
         <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
@@ -588,7 +592,7 @@ function DeclineModal({ onSubmit, onCancel }: { onSubmit: (reason: string) => Pr
             <button key={r} onClick={() => setReason(r)} className="chip">{r}</button>
           ))}
         </div>
-        <textarea className="textarea" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason…" />
+        <textarea className="textarea" maxLength={2000} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason…" />
       </div>
       <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
         <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
@@ -612,7 +616,7 @@ function ReworkModal({ onSubmit, onCancel }: { onSubmit: (note: string) => Promi
             <button key={r} onClick={() => setNote(r)} className="chip">{r}</button>
           ))}
         </div>
-        <textarea className="textarea" value={note} onChange={(e) => setNote(e.target.value)} placeholder="What needs fixing…" />
+        <textarea className="textarea" maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What needs fixing…" />
       </div>
       <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
         <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
@@ -635,7 +639,7 @@ function CompleteModal({ onSubmit, onCancel }: { onSubmit: (note: string, photo:
         <PhotoField onChange={setPhoto} label="Photo of the finished repair (required)" />
         <div className="grid gap-1.5">
           <label className="label" htmlFor="done-note">Notes for council (optional)</label>
-          <textarea id="done-note" className="textarea !min-h-[80px]" value={note} onChange={(e) => setNote(e.target.value)}
+          <textarea id="done-note" className="textarea !min-h-[80px]" maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)}
                     placeholder="e.g. Hot-mix patch laid and compacted, site swept." />
         </div>
       </div>

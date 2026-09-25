@@ -64,6 +64,19 @@ const demoUpdates: Record<string, RepairUpdate[]> = Object.fromEntries(
 const demoVotes = new Set<string>();      // `${defectId}:${userId}`
 const demoFollows = new Set<string>();    // `${defectId}:${userId}`
 
+/** Supabase returns at most 1,000 rows per request by default — fetch page by page so
+ *  lists, maps and council reports never silently miss rows once the program grows. */
+const PAGE = 1000;
+async function fetchAll<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await page(from, from + PAGE - 1);
+    if (error) throw error;
+    out.push(...(data || []));
+    if (!data || data.length < PAGE) return out;
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    PUBLIC API
    ═══════════════════════════════════════════════════════════════════ */
@@ -138,18 +151,19 @@ export const api = {
       }
       return out.sort((a, b) => +new Date(b.reported_at) - +new Date(a.reported_at)).map(r => withDerived(r, myUserId));
     }
-    let q = supabase.from('defects').select('*').order('reported_at', { ascending: false });
-    if (filters.status && filters.status !== 'all') q = q.eq('status', filters.status);
-    if (filters.severity && filters.severity.length) q = q.in('severity', filters.severity);
-    if (filters.type && filters.type !== 'all') q = q.eq('defect_type', filters.type);
-    if (filters.q) {
-      // Quote the value so commas, brackets and dots in a search (e.g. "Summer St, Orange") don't break the filter
-      const v = `"%${filters.q.replace(/[\\"]/g, '\\$&').replace(/[%_]/g, '\\$&')}%"`;
-      q = q.or(`title.ilike.${v},road.ilike.${v},description.ilike.${v}`);
-    }
-    const { data, error } = await q;
-    if (error) throw error;
-    return (data as DBDefect[] || []).map(r => mapDefect(r, myUserId));
+    const rows = await fetchAll<DBDefect>((from, to) => {
+      let q = supabase.from('defects').select('*').order('reported_at', { ascending: false }).order('id').range(from, to);
+      if (filters.status && filters.status !== 'all') q = q.eq('status', filters.status);
+      if (filters.severity && filters.severity.length) q = q.in('severity', filters.severity);
+      if (filters.type && filters.type !== 'all') q = q.eq('defect_type', filters.type);
+      if (filters.q) {
+        // Quote the value so commas, brackets and dots in a search (e.g. "Summer St, Orange") don't break the filter
+        const v = `"%${filters.q.replace(/[\\"]/g, '\\$&').replace(/[%_]/g, '\\$&')}%"`;
+        q = q.or(`title.ilike.${v},road.ilike.${v},description.ilike.${v}`);
+      }
+      return q;
+    });
+    return rows.map(r => mapDefect(r, myUserId));
   },
 
   async getDefect(id: string, myUserId: string | null = null): Promise<Defect> {
@@ -180,12 +194,11 @@ export const api = {
         .sort((a, b) => +new Date(b.reported_at) - +new Date(a.reported_at))
         .map(r => withDerived(r, myUserId));
     }
-    const { data, error } = await supabase.from('defects').select('*')
+    const rows = await fetchAll<DBDefect>((from, to) => supabase.from('defects').select('*')
       .eq('contractor_id', contractorId)
       .in('status', ['assigned', 'progress', 'completed'])
-      .order('reported_at', { ascending: false });
-    if (error) throw error;
-    return (data as DBDefect[] || []).map(r => mapDefect(r, myUserId));
+      .order('reported_at', { ascending: false }).order('id').range(from, to));
+    return rows.map(r => mapDefect(r, myUserId));
   },
 
   async createDefect(input: CreateDefectInput, userId: string): Promise<Defect> {
@@ -446,9 +459,8 @@ export const api = {
         contractor_id: r === 'contractor' ? 'demo-contractor' : null, created_at: now, updated_at: now,
       }));
     }
-    const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-    if (error) throw error;
-    return (data as Profile[]) || [];
+    return fetchAll<Profile>((from, to) =>
+      supabase.from('profiles').select('*').order('created_at', { ascending: false }).order('id').range(from, to));
   },
 
   /** Council changes a user's role; contractors are linked to a company (a new one if none given). */
@@ -477,10 +489,9 @@ export const api = {
         .filter(u => u.action === 'Assigned' || u.action === 'Repair complete')
         .map(({ defect_id, action, created_at }) => ({ defect_id, action, created_at }));
     }
-    const { data, error } = await supabase.from('repair_updates').select('defect_id, action, created_at')
-      .in('action', ['Assigned', 'Repair complete']).order('created_at', { ascending: true });
-    if (error) throw error;
-    return data || [];
+    return fetchAll<Pick<RepairUpdate, 'defect_id' | 'action' | 'created_at'>>((from, to) =>
+      supabase.from('repair_updates').select('defect_id, action, created_at')
+        .in('action', ['Assigned', 'Repair complete']).order('created_at', { ascending: true }).order('id').range(from, to));
   },
 
   /* ── notifications (header bell) ─────────────────────────────── */

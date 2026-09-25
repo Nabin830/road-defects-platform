@@ -199,7 +199,7 @@ function Companies({ companies, people, defects, onChanged }: {
   return (
     <section className="card overflow-hidden">
       <form onSubmit={add} className="p-4 border-b border-border flex flex-wrap gap-2">
-        <input className="input flex-1 min-w-[220px]" placeholder="New company name, e.g. Summit Asphalt" value={newName}
+        <input className="input flex-1 min-w-[220px]" maxLength={80} placeholder="New company name, e.g. Summit Asphalt" value={newName}
                onChange={(e) => setNewName(e.target.value)} aria-label="New company name" />
         <button className="btn btn-primary" disabled={!newName.trim()}><IconPlus size={15} /> Add company</button>
       </form>
@@ -218,7 +218,7 @@ function Companies({ companies, people, defects, onChanged }: {
                   <span className="w-9 h-9 rounded-full bg-pu-50 text-pu-700 grid place-items-center text-xs font-bold flex-none">{c.abbr}</span>
                   {editing === c.id ? (
                     <div className="flex gap-1.5 flex-1">
-                      <input className="input !min-h-[36px] !py-1.5" value={editName} autoFocus aria-label="Company name"
+                      <input className="input !min-h-[36px] !py-1.5" maxLength={80} value={editName} autoFocus aria-label="Company name"
                              onChange={(e) => setEditName(e.target.value)}
                              onKeyDown={(e) => { if (e.key === 'Enter') rename(c); if (e.key === 'Escape') setEditing(null); }} />
                       <button className="icon-btn !text-em-600" onClick={() => rename(c)} aria-label="Save name"><IconCheck size={16} /></button>
