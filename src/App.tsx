@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import { useAuth } from './store/auth';
 import { Navbar, TabBar, Footer } from './components/Layout';
 import { ToastHost } from './components/Toast';
@@ -18,20 +18,11 @@ import { AdminPage } from './pages/Admin';
 import { ProfilePage } from './pages/Profile';
 import { PeoplePage } from './pages/People';
 import { ReportsPage } from './pages/Reports';
-import { ForgotPasswordPage, ResetPasswordPage } from './pages/PasswordReset';
 import { PrivacyPage, TermsPage } from './pages/Legal';
 
 export function App() {
   const loc = useLocation();
   const refreshProfile = useAuth(s => s.refreshProfile);
-  const recovery = useAuth(s => s.recovery);
-  const navigate = useNavigate();
-
-  // Opened a password-reset email link → go straight to "choose a new password"
-  useEffect(() => {
-    if (recovery && loc.pathname !== '/reset-password') navigate('/reset-password', { replace: true });
-  }, [recovery, loc.pathname, navigate]);
-
   // Pick up role changes made by council (e.g. promoted to admin) without signing out and in again
   useEffect(() => {
     const onFocus = () => { refreshProfile(); };
@@ -56,8 +47,6 @@ export function App() {
           <Route path="/my-reports" element={<ProtectedRoute allow={['citizen']}><MyReportsPage /></ProtectedRoute>} />
           <Route path="/contractor" element={<ProtectedRoute allow={['contractor']}><ContractorPage /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/admin/people" element={<ProtectedRoute allow={['admin']}><PeoplePage /></ProtectedRoute>} />

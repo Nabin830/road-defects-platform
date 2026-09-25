@@ -56,11 +56,18 @@ publication) and also refreshes every minute.
 
 Note: the app uses hash URLs — e.g. `http://localhost:5173/#/login`, `#/admin`.
 
-### Password reset
+### Passwords (no emails)
 
-"Forgot password?" on the sign-in page emails a reset link. For the link to be accepted, add your app's
-address under **Authentication → URL Configuration → Redirect URLs**, e.g. `http://localhost:5173/**`
-(and your production URL when deployed). The link must be opened in the same browser that requested it.
+RoadFix doesn't send any emails. People change their own password on the Profile page. If someone
+forgets theirs, council sets a temporary one in the SQL Editor (the dashboard's own "recovery" option
+sends an email, so don't use it):
+
+```sql
+update auth.users set encrypted_password = extensions.crypt('NewTempPassword123', extensions.gen_salt('bf'))
+ where lower(email) = 'person@example.com';
+```
+
+Then tell the person their temporary password in person or by phone, and ask them to change it on the Profile page.
 
 ### Council pages
 
@@ -81,11 +88,12 @@ address under **Authentication → URL Configuration → Redirect URLs**, e.g. `
 - **Duplicates**: when reporting, open reports within 150 m of the pin are shown so residents can back
   an existing report instead of filing a new one.
 
-## 4. Disable email confirmation (for the demo)
+## 4. Turn off email confirmation (required)
 
 **Authentication → Providers → Email → Confirm email → OFF**
 
-This lets your demo users sign in without an email round-trip.
+RoadFix doesn't send emails, so new accounts must be able to sign in straight away. If this is left on,
+sign-up shows an error asking council to turn it off.
 
 ## 5. Create the admin account
 
@@ -105,13 +113,9 @@ Restart `npm run dev` and sign in as `council@gmail.com`.
 ## 7. What's real vs. what needs another service
 
 Everything in this app writes to and reads from real Postgres tables once the SQL above has run — there
-is no fabricated data once `.env.local` is set. Two features are intentionally left as manual follow-ups
-because they need a *third-party* service this repo can't provision for you:
+is no fabricated data once `.env.local` is set. RoadFix sends no emails: followers are notified inside
+the app only (the bell icon). One thing is intentionally manual:
 
-- **Emailing followers when a defect changes status.** The "Follow updates" button persists a real
-  follow relationship in `public.followers`, but actually sending an email needs a Supabase Edge
-  Function wired to a transactional email provider (Resend, Postmark, SES, …) triggered off
-  `repair_updates` inserts, plus that provider's API key. Not included here.
 - **Production admin/contractor onboarding.** Anyone can self-register as a citizen or contractor from
   `/register`. Promoting a user to `admin`, or linking a contractor sign-up to a `contractors` row, is a
   deliberate one-line SQL update (see above) rather than a self-serve flow — that's a safety choice, not
@@ -122,7 +126,7 @@ because they need a *third-party* service this repo can't provision for you:
 There's no "register as admin" option in the app on purpose — anyone could tick it otherwise. Two ways
 to create one, pick whichever is easier:
 
-**A — via the app, then promote (works either way, with or without email confirmation on):**
+**A — via the app, then promote:**
 1. Go to `/register`, sign up normally as a citizen with the council staff member's real email.
 2. In Supabase Dashboard → **SQL Editor**, run:
    ```sql
@@ -132,7 +136,7 @@ to create one, pick whichever is easier:
    ```
 3. Sign out and back in (or just refresh) — `/admin` is now available to that account.
 
-**B — create it directly in the dashboard (skips email confirmation entirely):**
+**B — create it directly in the dashboard:**
 1. Supabase Dashboard → **Authentication → Users → Add user**. Set an email + password; this
    creates the account as already-confirmed, so it can sign in immediately either way.
 2. This fires the same `handle_new_user` trigger as a normal sign-up, creating a `profiles` row

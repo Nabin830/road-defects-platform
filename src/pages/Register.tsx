@@ -33,14 +33,9 @@ export function RegisterPage() {
     setBusy(true);
     try {
       if (HAS_SUPABASE) {
-        const signedIn = await signUp(email, password, name, role);
-        if (signedIn) {
-          toast('success', 'Account created', 'Welcome to the platform!');
-          nav(role === 'contractor' ? '/contractor' : '/dashboard');
-        } else {
-          toast('success', 'Account created', 'Check your email to confirm your address, then sign in.');
-          nav('/login');
-        }
+        await signUp(email, password, name, role);
+        toast('success', 'Account created', 'Welcome to RoadFix!');
+        nav(role === 'contractor' ? '/contractor' : '/dashboard');
       } else {
         setDemoRole(role);
         toast('success', 'Account created (demo)', 'Configure Supabase to enable real accounts.');

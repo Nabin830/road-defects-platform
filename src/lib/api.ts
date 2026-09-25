@@ -116,14 +116,6 @@ export const api = {
     if (error) throw error;
   },
 
-  /** Emails a reset link that brings the user back to #/reset-password. */
-  async requestPasswordReset(email: string): Promise<void> {
-    if (!HAS_SUPABASE) throw new Error('Configure Supabase to reset passwords.');
-    const redirectTo = `${window.location.origin}${window.location.pathname}?reset=1`;
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
-    if (error) throw error;
-  },
-
   async getProfile(userId: string): Promise<Profile | null> {
     if (!HAS_SUPABASE) return null;
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();

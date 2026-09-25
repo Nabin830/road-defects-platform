@@ -11,17 +11,14 @@ interface AuthState {
   demoRole: Role;                // used when Supabase not configured
   init: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
-  /** Returns true if the new account is signed in immediately, false if email confirmation is required. */
-  signUp: (email: string, password: string, name: string, role: Role) => Promise<boolean>;
+  /** Creates the account and signs it in. No emails are sent (Supabase "Confirm email" must be OFF). */
+  signUp: (email: string, password: string, name: string, role: Role) => Promise<void>;
   signOut: () => Promise<void>;
   /** Re-read the signed-in user's profile (role, contractor link) from the database. */
   refreshProfile: () => Promise<void>;
   setDemoRole: (r: Role) => void;
   setDemoAuthed: (b: boolean) => void;
   authed: boolean;
-  /** True after opening a password-reset email link, until a new password is set. */
-  recovery: boolean;
-  setRecovery: (b: boolean) => void;
 }
 
 export const useAuth = create<AuthState>((set, get) => ({
@@ -31,21 +28,13 @@ export const useAuth = create<AuthState>((set, get) => ({
   role: 'citizen',
   demoRole: 'citizen',
   authed: false,
-  recovery: false,
-  setRecovery(b) { set({ recovery: b }); },
 
   async init() {
     if (!HAS_SUPABASE) {
       set({ ready: true });
       return;
     }
-    // Arrived from a password-reset email (see api.requestPasswordReset)
-    if (new URLSearchParams(window.location.search).has('reset')) set({ recovery: true });
-
-    // Subscribe before reading the session so events fired while the client
-    // processes an email link (e.g. PASSWORD_RECOVERY) aren't missed.
-    supabase.auth.onAuthStateChange((evt, session) => {
-      if (evt === 'PASSWORD_RECOVERY') set({ recovery: true });
+    supabase.auth.onAuthStateChange((_evt, session) => {
       if (!session) {
         set({ userId: null, profile: null, role: get().demoRole, authed: false });
         return;
@@ -80,27 +69,16 @@ export const useAuth = create<AuthState>((set, get) => ({
 
   async signUp(email, password, name, role) {
     const result = await api.signUp({ email, password, name, role });
-    // Some Supabase projects return a session directly on signUp (confirm-email OFF).
-    if (result.session) {
-      const profile = await api.getProfile(result.session.user.id);
-      set({ userId: result.session.user.id, profile, role: profile?.role || role, authed: true });
-      return true;
+    let session = result.session;
+    if (!session) {
+      // No session back usually means Supabase still has "Confirm email" switched on
+      try { await api.signIn({ email, password }); }
+      catch { throw new Error('Account created, but sign-in is blocked. Council must turn off "Confirm email" in Supabase (Authentication → Providers → Email).'); }
+      session = (await supabase.auth.getSession()).data.session;
     }
-    // Otherwise try an immediate sign-in — works if confirm-email is OFF but signUp
-    // didn't hand back a session for some reason; fails with "Email not confirmed"
-    // if the project still requires confirmation.
-    try {
-      await api.signIn({ email, password });
-    } catch {
-      return false;
-    }
-    const { data } = await supabase.auth.getSession();
-    if (data.session) {
-      const profile = await api.getProfile(data.session.user.id);
-      set({ userId: data.session.user.id, profile, role: profile?.role || role, authed: true });
-      return true;
-    }
-    return false;
+    if (!session) throw new Error('Account created, but could not sign in. Please try signing in.');
+    const profile = await api.getProfile(session.user.id);
+    set({ userId: session.user.id, profile, role: profile?.role || role, authed: true });
   },
 
   async refreshProfile() {

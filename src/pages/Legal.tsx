@@ -24,7 +24,7 @@ export function PrivacyPage() {
       <section>
         <h2>What we collect</h2>
         <ul>
-          <li><b>Your account:</b> name, email address, and optionally your phone number and suburb.</li>
+          <li><b>Your account:</b> name, email address (used only as your sign-in name — RoadFix doesn't send you emails), and optionally your phone number and suburb.</li>
           <li><b>Your reports:</b> the title, description, defect type, severity, photo, map location and street address you submit.</li>
           <li><b>Activity:</b> reports you back or follow, and the in-app notifications sent to you.</li>
           <li><b>Contractors:</b> company name and the updates, notes and photos posted on assigned jobs.</li>

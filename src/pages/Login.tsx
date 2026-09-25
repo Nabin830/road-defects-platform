@@ -88,7 +88,7 @@ export function LoginPage() {
               </div>
             </div>
             <div className="-mt-1 text-right">
-              <Link to="/forgot-password" className="text-[13px] font-semibold">Forgot password?</Link>
+              <span className="text-[12.5px] text-muted">Forgot your password? Ask council to reset it.</span>
             </div>
             <button className="btn btn-primary btn-lg btn-block" type="submit" disabled={busy}>
               {busy ? 'Signing in…' : 'Sign in'}
