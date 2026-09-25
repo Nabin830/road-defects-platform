@@ -12,12 +12,12 @@
   --border-strong: #D6CFC3;
   --ink: #0F172A;
   --ink-2: #334155;
-  --muted: #64748B;
-  --muted-2: #94A3B8;
+  --muted: #5B6879;      /* 5.3:1 on the page background (WCAG AA needs 4.5) */
+  --muted-2: #94A3B8;    /* placeholders and decoration only — too light for body text */
   /* Brand — light cone-orange from the RoadFix logo, charcoal text on top */
   --brand: #FB9A4B;
   --brand-hover: #F7862E;
-  --brand-text: #C2540F;
+  --brand-text: #B34D0C;   /* ≥4.6:1 on every light background (WCAG AA) */
   --brand-soft: #FFF3E8;
   --brand-ink: #201F1C;
   /* Chart series (validated for colour-blind separation on this surface) */
@@ -42,7 +42,7 @@
   --ink: #F1F5F9;
   --ink-2: #CBD5E1;
   --muted: #94A3B8;
-  --muted-2: #64748B;
+  --muted-2: #8391A6;
 }
 
 @layer base {
@@ -50,7 +50,7 @@
   body {
     background: var(--bg);
     color: var(--ink);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     font-size: 14px;
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
@@ -223,8 +223,8 @@
   :root, [data-theme="dark"] {
     --bg: #fff; --bg-alt: #F4F1EA; --surface: #fff; --surface-2: #FBF9F6;
     --border: #EAE5DC; --border-strong: #D6CFC3;
-    --ink: #0F172A; --ink-2: #334155; --muted: #64748B; --muted-2: #94A3B8;
-    --brand-text: #C2540F; --brand-soft: #FFF3E8;
+    --ink: #0F172A; --ink-2: #334155; --muted: #5B6879; --muted-2: #94A3B8;
+    --brand-text: #B34D0C; --brand-soft: #FFF3E8;
   }
   body { background: #fff !important; }
   .card { box-shadow: none !important; break-inside: avoid; }

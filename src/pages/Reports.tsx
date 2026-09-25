@@ -6,6 +6,7 @@ import { TYPES } from '../lib/constants';
 import { ColumnChart, BarList } from '../components/Charts';
 import type { Contractor, Defect, RepairUpdate } from '../lib/types';
 import { IconDownload } from '../lib/icons';
+import { useSeo } from '../lib/seo';
 
 type Milestone = Pick<RepairUpdate, 'defect_id' | 'action' | 'created_at'>;
 const RANGES = [3, 6, 12] as const;
@@ -25,6 +26,7 @@ const duration = (d: number) => (d < 1 ? `${Math.max(1, Math.round(d * 24))} h` 
 const pct = (n: number, d: number) => (d ? Math.round((n / d) * 100) : null);
 
 export function ReportsPage() {
+  useSeo({ title: 'Council reports', noindex: true });
   const { toast } = useUI();
   const [range, setRange] = useState<(typeof RANGES)[number]>(6);
   const [defects, setDefects] = useState<Defect[]>([]);

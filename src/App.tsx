@@ -1,10 +1,11 @@
 import { useEffect, lazy, Suspense, type ComponentType } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { useAuth } from './store/auth';
 import { Navbar, TabBar, Footer } from './components/Layout';
 import { ToastHost } from './components/Toast';
 import { ModalHost } from './components/Modal';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { useSeo } from './lib/seo';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { HomePage } from './pages/Home';
 
@@ -45,7 +46,8 @@ export function App() {
       <Navbar />
       <div className="flex-1 flex flex-col">
         <ErrorBoundary resetKey={loc.pathname}>
-          <Suspense fallback={<div className="w-full max-w-[1280px] mx-auto px-6 py-16 text-center text-muted">Loading…</div>}>
+          {/* Tall placeholder while a page's code loads, so the footer doesn't jump when it arrives */}
+          <Suspense fallback={<div className="w-full min-h-[85vh] max-w-[1280px] mx-auto px-6 py-16 text-center text-muted">Loading…</div>}>
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/login" element={<LoginPage />} />
@@ -62,13 +64,7 @@ export function App() {
             <Route path="/admin/people" element={<ProtectedRoute allow={['admin']}><PeoplePage /></ProtectedRoute>} />
             <Route path="/admin/reports" element={<ProtectedRoute allow={['admin']}><ReportsPage /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute allow={['admin']}><AdminPage /></ProtectedRoute>} />
-            <Route path="*" element={
-              <main className="w-full max-w-[600px] mx-auto px-6 py-20 text-center">
-                <h1>Page not found</h1>
-                <p className="text-muted mt-2 mb-6">That page doesn't exist. It may have moved, or the link was mistyped.</p>
-                <a href="#/" className="btn btn-primary hover:no-underline">Go to the home page</a>
-              </main>
-            } />
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
           </Suspense>
         </ErrorBoundary>
@@ -78,5 +74,16 @@ export function App() {
       <ToastHost />
       <ModalHost />
     </div>
+  );
+}
+
+function NotFoundPage() {
+  useSeo({ title: 'Page not found', noindex: true });
+  return (
+    <main className="w-full max-w-[600px] mx-auto px-6 py-20 text-center">
+      <h1>Page not found</h1>
+      <p className="text-muted mt-2 mb-6">That page doesn't exist. It may have moved, or the link was mistyped.</p>
+      <Link to="/" className="btn btn-primary hover:no-underline">Go to the home page</Link>
+    </main>
   );
 }

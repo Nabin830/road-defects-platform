@@ -6,8 +6,10 @@ import { useUI } from '../store/ui';
 import { DefectCard } from '../components/DefectCard';
 import { IconPlus } from '../lib/icons';
 import type { Defect } from '../lib/types';
+import { useSeo } from '../lib/seo';
 
 export function MyReportsPage() {
+  useSeo({ title: 'My reports', noindex: true });
   const { userId } = useAuth();
   const [mine, setMine] = useState<Defect[]>([]);
   const [tab, setTab] = useState<'all' | 'active' | 'done'>('all');

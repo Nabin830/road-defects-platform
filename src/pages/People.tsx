@@ -5,6 +5,7 @@ import { useUI } from '../store/ui';
 import { fmt, initialsOf } from '../lib/utils';
 import { IconSearch, IconPlus, IconUsers, IconTruck, IconCheck, IconX } from '../lib/icons';
 import type { Contractor, Defect, Profile, Role } from '../lib/types';
+import { useSeo } from '../lib/seo';
 
 const ROLE_LABEL: Record<Role, string> = { citizen: 'Resident', contractor: 'Contractor', admin: 'Council' };
 const ROLE_CLS: Record<Role, string> = {
@@ -14,6 +15,7 @@ const ROLE_CLS: Record<Role, string> = {
 };
 
 export function PeoplePage() {
+  useSeo({ title: 'People & contractors', noindex: true });
   const { userId } = useAuth();
   const { toast, openModal, closeModal } = useUI();
   const [tab, setTab] = useState<'people' | 'companies'>('people');

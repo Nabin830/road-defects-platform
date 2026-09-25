@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { BrandLogo } from '../components/Brand';
-import sticker from '../Logos/sticker-lockup.png';
+import sticker from '../assets/sticker-lockup.webp';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { homeFor } from '../components/ProtectedRoute';
 import { useAuth } from '../store/auth';
 import { useUI } from '../store/ui';
 import { HAS_SUPABASE } from '../lib/supabase';
 import { IconMail, IconLock, IconEye, IconShield } from '../lib/icons';
+import { useSeo } from '../lib/seo';
 
 export function LoginPage() {
+  useSeo({ title: 'Sign in', description: 'Sign in to RoadFix to report road defects and follow repairs in Orange, NSW.', noindex: true });
   // Already signed in when the page opened → go to their own home instead of showing the form again
   const [alreadyIn] = useState(() => { const a = useAuth.getState(); return a.ready && a.authed ? a.role : null; });
   const nav = useNavigate();
@@ -56,7 +58,7 @@ export function LoginPage() {
           <BrandLogo className="h-8" />
         </Link>
         <div>
-          <img src={sticker} alt="RoadFix sticker" className="w-40 h-40 mb-6 drop-shadow-md" />
+          <img src={sticker} alt="RoadFix sticker" width={160} height={160} decoding="async" className="w-40 h-40 mb-6 drop-shadow-md" />
           <h2 className="text-3xl leading-tight mb-3">Every pothole reported gets closer to fixed.</h2>
           <p className="text-ink-2 max-w-md">Sign in to track your reports, follow repair progress, and back defects nearby.</p>
         </div>

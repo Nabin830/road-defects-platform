@@ -10,8 +10,12 @@ import { TYPES, SEVERITY, STATUS } from '../lib/constants';
 import type { Defect, DefectStatus, Severity, DefectType } from '../lib/types';
 import { Link } from 'react-router-dom';
 import { relativeTime } from '../lib/utils';
+import { useSeo } from '../lib/seo';
 
 type View = 'map' | 'grid' | 'table';
+
+// This page opens on the map, so start fetching the map code straight away (in parallel with the data)
+void import('../components/LeafletMap');
 
 /** View and filters survive opening a report and pressing Back (kept for this browser tab only). */
 const KEY = 'roadfix-defects-view';
@@ -21,6 +25,7 @@ function loadSaved(): Partial<Saved> {
 }
 
 export function DefectsPage() {
+  useSeo({ title: 'All reported road defects in Orange', description: 'Live map and list of every road defect reported in Orange, NSW — potholes, cracks, flooding and more — with each repair’s status and deadline.' });
   const { userId } = useAuth();
   const [defects, setDefects] = useState<Defect[]>([]);
   const [saved] = useState(loadSaved);

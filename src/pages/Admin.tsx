@@ -11,8 +11,10 @@ import { useUI } from '../store/ui';
 import { slaStatus, dueDate } from '../lib/sla';
 import { SlaChip } from '../components/SlaChip';
 import type { Defect, Contractor, DefectStatus, Severity as Sev } from '../lib/types';
+import { useSeo } from '../lib/seo';
 
 export function AdminPage() {
+  useSeo({ title: 'Council overview', noindex: true });
   const { toast } = useUI();
   const [defects, setDefects] = useState<Defect[]>([]);
   const [contractors, setContractors] = useState<Contractor[]>([]);

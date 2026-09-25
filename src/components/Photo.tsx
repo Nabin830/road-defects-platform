@@ -4,7 +4,8 @@ import { useState, type ReactNode, type ImgHTMLAttributes } from 'react';
 export function Photo({ fallback = null, ...img }: ImgHTMLAttributes<HTMLImageElement> & { fallback?: ReactNode }) {
   const [broken, setBroken] = useState(false);
   if (broken || !img.src) return <>{fallback}</>;
-  return <img {...img} onError={() => setBroken(true)} />;
+  // Off-screen photos load lazily by default; pass loading="eager" for the main photo at the top of a page
+  return <img loading="lazy" decoding="async" {...img} onError={() => setBroken(true)} />;
 }
 
 /** Neutral box shown where a photo should be but couldn't load. */

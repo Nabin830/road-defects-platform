@@ -1,0 +1,2 @@
+# Netlify: any address that isn't a real file opens the app (it handles /defects, /defect/RD-…, etc.)
+/*    /index.html   200

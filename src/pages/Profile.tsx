@@ -6,10 +6,12 @@ import { HAS_SUPABASE } from '../lib/supabase';
 import { initialsOf } from '../lib/utils';
 import { IconCheck, IconLock, IconUser, IconTruck } from '../lib/icons';
 import type { Contractor } from '../lib/types';
+import { useSeo } from '../lib/seo';
 
 const ROLE_LABEL = { citizen: 'Resident', contractor: 'Contractor', admin: 'Council' } as const;
 
 export function ProfilePage() {
+  useSeo({ title: 'Profile & settings', noindex: true });
   const { profile, userId, role, refreshProfile } = useAuth();
   const { toast } = useUI();
 

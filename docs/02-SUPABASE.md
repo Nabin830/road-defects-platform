@@ -54,7 +54,7 @@ contractor actions). The person who made the update is never notified about thei
 bell updates live through Supabase Realtime (the SQL adds `notifications` to the `supabase_realtime`
 publication) and also refreshes every minute.
 
-Note: the app uses hash URLs — e.g. `http://localhost:5173/#/login`, `#/admin`.
+Pages use normal addresses — e.g. `http://localhost:5173/login`, `/admin`. Old `/#/…` links still work (they redirect).
 
 ### Passwords (no emails)
 
@@ -71,10 +71,10 @@ Then tell the person their temporary password in person or by phone, and ask the
 
 ### Council pages
 
-- **People** (`#/admin/people`): change anyone's role (resident / contractor / council), link contractor
+- **People** (`/admin/people`): change anyone's role (resident / contractor / council), link contractor
   accounts to a company, and add or rename contractor companies. There is always at least one council
   admin — the last one can't be demoted. Profiles (emails, phones) are visible only to their owner and council.
-- **Reports** (`#/admin/reports`): reports received vs repairs verified per month, median time to fix and to
+- **Reports** (`/admin/reports`): reports received vs repairs verified per month, median time to fix and to
   assign, the share fixed within deadline, reports by type, and contractor performance — for the last 3, 6 or
   12 months.
 

@@ -31,7 +31,7 @@ Files in `public/` (favicon, icons, `og-image.png`) are copies of the originals,
 - **React 18** + **TypeScript 5** — strict typing throughout
 - **Vite 5** — fast dev server and build
 - **Tailwind CSS 3** — utility-first styling with CSS-var-based theming
-- **React Router 6** — hash-router SPA
+- **React Router 7** — single-page app with normal (search-engine friendly) URLs
 - **Zustand 4** — tiny state store for auth + UI
 - **Supabase JS 2** — Postgres backend with auth and row-level security
 - **Leaflet + React-Leaflet** — OpenStreetMap tiles, custom pins

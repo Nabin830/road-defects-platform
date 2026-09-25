@@ -10,8 +10,10 @@ import { BrandLogo } from '../components/Brand';
 import { useAuth } from '../store/auth';
 import { useUI } from '../store/ui';
 import { homeFor } from '../components/ProtectedRoute';
+import { useSeo } from '../lib/seo';
 
 export function HomePage() {
+  useSeo({});
   const [defects, setDefects] = useState<Defect[]>([]);
   const [ps, setPs] = useState<PlatformStats | null>(null);
   const { authed, role } = useAuth();

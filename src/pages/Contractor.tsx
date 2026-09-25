@@ -9,8 +9,10 @@ import { relativeTime } from '../lib/utils';
 import { SlaChip } from '../components/SlaChip';
 import { slaStatus } from '../lib/sla';
 import type { Contractor, Defect } from '../lib/types';
+import { useSeo } from '../lib/seo';
 
 export function ContractorPage() {
+  useSeo({ title: 'My jobs', noindex: true });
   const { profile } = useAuth();
   const [rows, setRows] = useState<Defect[]>([]);
   const [contractor, setContractor] = useState<Contractor | null>(null);

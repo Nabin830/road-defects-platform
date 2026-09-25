@@ -11,6 +11,7 @@ import { IconSearch, IconCrosshair, IconLeft, IconRight, IconUpload, IconCheck, 
 import type { Defect, DefectType, Severity } from '../lib/types';
 import { SeverityChip } from '../components/Severity';
 import { StatusBadge } from '../components/Badge';
+import { useSeo } from '../lib/seo';
 
 /** Distance in metres between two lat/lng points. */
 function metres(aLat: number, aLng: number, bLat: number, bLng: number) {
@@ -34,6 +35,7 @@ function looksReal(text: string, min: number) {
 }
 
 export function ReportPage() {
+  useSeo({ title: 'Report a road defect', noindex: true });
   const nav = useNavigate();
   const { userId } = useAuth();
   const { toast } = useUI();

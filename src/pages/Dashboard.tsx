@@ -10,8 +10,10 @@ import { SeverityChip } from '../components/Severity';
 import { IconPlus, IconMap, IconFile, IconCheckCircle, IconClock, IconAlert } from '../lib/icons';
 import { relativeTime } from '../lib/utils';
 import type { Defect } from '../lib/types';
+import { useSeo } from '../lib/seo';
 
 export function DashboardPage() {
+  useSeo({ title: 'My dashboard', noindex: true });
   const { userId, profile, demoRole } = useAuth();
   const [mine, setMine] = useState<Defect[]>([]);
   const [all, setAll] = useState<Defect[]>([]);

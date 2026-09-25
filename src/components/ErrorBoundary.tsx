@@ -22,7 +22,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: s
           <p className="text-muted mb-6">Your data is safe. Try reloading, or go back to the home page.</p>
           <div className="flex gap-3 justify-center">
             <button className="btn btn-primary" onClick={() => window.location.reload()}>Reload</button>
-            <a className="btn btn-secondary hover:no-underline" href="#/">Home</a>
+            <a className="btn btn-secondary hover:no-underline" href="/">Home</a>
           </div>
         </div>
       </main>

@@ -15,6 +15,7 @@ import { fmt } from '../lib/utils';
 import { slaStatus, dueDate, DEFAULT_FIX_DAYS } from '../lib/sla';
 import { SlaChip } from '../components/SlaChip';
 import type { Defect, RepairUpdate, Contractor, Severity as Sev } from '../lib/types';
+import { useSeo } from '../lib/seo';
 
 export function DefectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -30,6 +31,11 @@ export function DefectDetailPage() {
   const [following, setFollowing] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  useSeo(notFound ? { title: 'Report not found', noindex: true } : defect ? {
+    title: `${defect.title} — ${defect.road}`,
+    description: `${typeOf(defect.defect_type).label} reported in Orange, NSW on ${fmt(defect.reported_at)}. ${defect.description}`.slice(0, 155),
+    image: defect.photo_url ?? undefined,
+  } : {});
 
   useEffect(() => {
     if (!id) return;
@@ -231,7 +237,7 @@ export function DefectDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_auto_1fr] gap-6 items-start">
           <div className="card overflow-hidden order-1 lg:order-none lg:col-start-1">
             {defect.photo_url && (
-              <Photo src={defect.photo_url} alt={defect.title} className="block w-full max-h-[420px] object-cover bg-surface-2 cursor-zoom-in"
+              <Photo src={defect.photo_url} alt={defect.title} loading="eager" fetchPriority="high" className="block w-full max-h-[420px] object-cover bg-surface-2 cursor-zoom-in"
                      onClick={() => window.open(defect.photo_url!, '_blank', 'noopener')} />
             )}
             <div className="p-6">

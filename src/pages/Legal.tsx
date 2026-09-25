@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { useSeo } from '../lib/seo';
 
 const UPDATED = '24 September 2026';
 
@@ -9,8 +10,8 @@ function LegalShell({ label, title, intro, children }: { label: string; title: s
       <span className="section-label">{label}</span>
       <h1 className="mt-1 mb-2">{title}</h1>
       <p className="text-muted mb-1">{intro}</p>
-      <p className="text-[12.5px] text-muted-2 mb-8">Last updated {UPDATED}</p>
-      <div className="card p-6 md:p-8 space-y-7 text-[14.5px] leading-relaxed text-ink-2 [&_h2]:text-[18px] [&_h2]:text-ink [&_h2]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1">
+      <p className="text-[12.5px] text-muted mb-8">Last updated {UPDATED}</p>
+      <div className="card p-6 md:p-8 space-y-7 text-[14.5px] leading-relaxed text-ink-2 [&_h2]:text-[18px] [&_h2]:text-ink [&_h2]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1 [&_a]:underline [&_a]:underline-offset-2">
         {children}
       </div>
     </main>
@@ -18,6 +19,7 @@ function LegalShell({ label, title, intro, children }: { label: string; title: s
 }
 
 export function PrivacyPage() {
+  useSeo({ title: 'Privacy policy', description: 'How RoadFix collects, uses and protects your information when you report road defects in Orange, NSW.' });
   return (
     <LegalShell label="Privacy" title="Privacy policy"
                 intro="What RoadFix collects, why, and who can see it. We only collect what we need to get roads fixed.">
@@ -85,6 +87,7 @@ export function PrivacyPage() {
 }
 
 export function TermsPage() {
+  useSeo({ title: 'Terms of use', description: 'The rules for using RoadFix to report road defects to Orange City Council.' });
   return (
     <LegalShell label="Terms" title="Terms of use"
                 intro="The rules for using RoadFix. By creating an account you agree to them.">
