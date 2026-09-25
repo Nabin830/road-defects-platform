@@ -20,6 +20,8 @@ export function DefectMap({ defects, height = 400, onPick, pickedLat, pickedLng,
   const layerRef = useRef<L.LayerGroup | null>(null);
   const pickMarkerRef = useRef<L.Marker | null>(null);
   const nav = useNavigate();
+  const navRef = useRef(nav);
+  navRef.current = nav;
 
   // init
   useEffect(() => {
@@ -31,12 +33,22 @@ export function DefectMap({ defects, height = 400, onPick, pickedLat, pickedLng,
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
 
+    // "View details" links inside popups: navigate in-app instead of reloading the whole site
+    const box = boxRef.current;
+    const onPopupLink = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[data-defect]');
+      if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;   // let "open in new tab" work
+      e.preventDefault();
+      navRef.current(`/defect/${a.dataset.defect}`);
+    };
+    box.addEventListener('click', onPopupLink);
+
     if (onPick) {
       map.on('click', (e: L.LeafletMouseEvent) => onPick(e.latlng.lat, e.latlng.lng));
     }
     // ensure size after mount (skip if the page was already left)
     const t = setTimeout(() => { if (mapRef.current === map) map.invalidateSize(); }, 100);
-    return () => { clearTimeout(t); map.stop(); map.remove(); mapRef.current = null; };
+    return () => { clearTimeout(t); box.removeEventListener('click', onPopupLink); map.stop(); map.remove(); mapRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -64,15 +76,10 @@ export function DefectMap({ defects, height = 400, onPick, pickedLat, pickedLng,
             <span style="padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--ink-2);font-weight:600">${STATUS[d.status].label}</span>
             <span style="color:${color};font-weight:700">${SEVERITY[d.severity].label}</span>
           </div>
-          <a href="/defect/${encodeURIComponent(d.id)}" style="font-size:12px;font-weight:700;color:var(--brand-text)">View details →</a>
+          <a href="/defect/${encodeURIComponent(d.id)}" data-defect="${escapeHtml(d.id)}" style="font-size:12px;font-weight:700;color:var(--brand-text)">View details →</a>
         </div>`;
       marker.bindPopup(popup, { maxWidth: 250 });
       marker.on('click', () => marker.openPopup());
-      // The popup's HTML only exists once opened — hook its link then, so it navigates in-app (no full reload)
-      marker.on('popupopen', (e: L.PopupEvent) => {
-        const link = e.popup.getElement()?.querySelector('a');
-        if (link) link.onclick = (ev) => { ev.preventDefault(); nav(`/defect/${d.id}`); };
-      });
     }
     // Auto-fit if we have defects
     if (defects.length > 0) {
