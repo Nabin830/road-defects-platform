@@ -9,6 +9,7 @@
 --   • profile picture links can't be set (the app doesn't use them)
 --   • notifications older than 90 days are cleared automatically
 --   • report IDs must use the RD-XXXXXX format
+--   • indexes so these checks stay fast as data grows
 -- ═══════════════════════════════════════════════════════════════════
 
 -- ─── Hardening: company edits, text limits, fair backing, timeline flood limit ───
@@ -148,3 +149,10 @@ begin
   end if;
   return new;
 end $$ language plpgsql security definer set search_path = public;
+
+-- Indexes for the checks that run on every report, vote and timeline post
+create index if not exists idx_defects_reporter_time on public.defects(reported_by, reported_at desc);  -- spam limits
+create index if not exists idx_profiles_contractor  on public.profiles(contractor_id);                  -- who hears about a job
+create index if not exists idx_updates_actor_defect on public.repair_updates(defect_id, actor_id, created_at desc); -- timeline flood limit
+create index if not exists idx_updates_milestones   on public.repair_updates(action, created_at)
+  where action in ('Assigned', 'Repair complete');                                                     -- council reports

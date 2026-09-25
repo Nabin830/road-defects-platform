@@ -176,6 +176,12 @@ create index idx_defects_contractor_id  on public.defects(contractor_id);
 create index idx_defects_reported_at    on public.defects(reported_at desc);
 create index idx_updates_defect_id      on public.repair_updates(defect_id, created_at desc);
 create index idx_profiles_role          on public.profiles(role);
+-- Indexes for the checks that run on every report, vote and timeline post
+create index if not exists idx_defects_reporter_time on public.defects(reported_by, reported_at desc);  -- spam limits
+create index if not exists idx_profiles_contractor  on public.profiles(contractor_id);                  -- who hears about a job
+create index if not exists idx_updates_actor_defect on public.repair_updates(defect_id, actor_id, created_at desc); -- timeline flood limit
+create index if not exists idx_updates_milestones   on public.repair_updates(action, created_at)
+  where action in ('Assigned', 'Repair complete');                                                     -- council reports
 
 -- ─── AUTO-UPDATE timestamps ───────────────────────────────────────
 create or replace function public.touch_updated_at()
