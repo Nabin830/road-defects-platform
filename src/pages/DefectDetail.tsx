@@ -73,7 +73,7 @@ export function DefectDetailPage() {
       if (!defect) return;
       await api.acceptAssignment(defect.id, userId!);
       await refresh();
-      toast('success', 'Job accepted', 'It is now in your work queue.');
+      toast('success', 'Job accepted', 'It is now in progress.');
     }, 'Could not accept job');
   }
 
@@ -128,9 +128,8 @@ export function DefectDetailPage() {
   function markComplete() {
     openModal(<CompleteModal onCancel={closeModal} onSubmit={(note, photo) => run(async () => {
       if (!defect) return;
-      const photo_url = photo ? await api.uploadPhoto(photo, userId!) : null;
-      await api.updateDefect(defect.id, { status: 'completed', progress: 100 });
-      await api.addUpdate(defect.id, { action: 'Repair complete', note: note || 'Site cleared. Waiting for council to verify.', progress: 100, photo_url }, userId!, 'contractor');
+      const photo_url = await api.uploadPhoto(photo, userId!);
+      await api.completeJob(defect.id, note, photo_url, userId!);
       await refresh();
       closeModal();
       toast('success', 'Marked complete', 'Sent to council for verification.');
@@ -197,7 +196,7 @@ export function DefectDetailPage() {
   function openAddUpdate() {
     openModal(<AddUpdateModal onSubmit={(note, progress, photo) => run(async () => {
       if (!defect) return;
-      const photo_url = photo ? await api.uploadPhoto(photo, userId!) : null;
+      const photo_url = await api.uploadPhoto(photo, userId!);
       await api.addUpdate(defect.id, { action: 'Progress update', note, progress, photo_url }, userId!, 'contractor');
       await refresh();
       closeModal();
@@ -339,10 +338,12 @@ export function DefectDetailPage() {
                     <IconWrench size={16} /> Mark in progress
                   </button>
                 )}
-                <button onClick={markComplete} className="btn btn-success btn-block">
-                  <IconCheck size={16} /> Mark complete
-                </button>
-                <button onClick={openAddUpdate} className="btn btn-secondary btn-block">Add progress update</button>
+                {defect.status === 'progress' && (<>
+                  <button onClick={markComplete} className="btn btn-success btn-block">
+                    <IconCheck size={16} /> Mark complete
+                  </button>
+                  <button onClick={openAddUpdate} className="btn btn-secondary btn-block">Add progress update</button>
+                </>)}
               </>
             )}
             {role === 'contractor' && authed && !myJob && (
@@ -501,7 +502,7 @@ function AssignModal({ contractors, severity, initialInstructions, onPick, onCan
   );
 }
 
-function AddUpdateModal({ onSubmit, onCancel, currentProgress }: { onSubmit: (note: string, progress: number, photo: File | null) => Promise<void> | void; onCancel: () => void; currentProgress: number }) {
+function AddUpdateModal({ onSubmit, onCancel, currentProgress }: { onSubmit: (note: string, progress: number, photo: File) => Promise<void> | void; onCancel: () => void; currentProgress: number }) {
   const [note, setNote] = useState('');
   const [progress, setProgress] = useState(currentProgress);
   const [photo, setPhoto] = useState<File | null>(null);
@@ -523,12 +524,12 @@ function AddUpdateModal({ onSubmit, onCancel, currentProgress }: { onSubmit: (no
           <input id="upd-prog" type="range" min={0} max={100} step={5} value={progress}
                  onChange={(e) => setProgress(Number(e.target.value))} className="w-full accent-brand" />
         </div>
-        <PhotoField onChange={setPhoto} label="Add a site photo (optional)" />
+        <PhotoField onChange={setPhoto} label="Site photo (required)" />
       </div>
       <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
         <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-        <button className="btn btn-primary" disabled={!note.trim() || busy}
-                onClick={async () => { if (!note.trim()) return; setBusy(true); await onSubmit(note.trim(), progress, photo); setBusy(false); }}>
+        <button className="btn btn-primary" disabled={!note.trim() || !photo || busy} title={photo ? undefined : 'Add a site photo first'}
+                onClick={async () => { if (!note.trim() || !photo) return; setBusy(true); await onSubmit(note.trim(), progress, photo); setBusy(false); }}>
           {busy ? 'Publishing…' : 'Publish update'}
         </button>
       </footer>
@@ -602,7 +603,7 @@ function ReworkModal({ onSubmit, onCancel }: { onSubmit: (note: string) => void;
   );
 }
 
-function CompleteModal({ onSubmit, onCancel }: { onSubmit: (note: string, photo: File | null) => Promise<void> | void; onCancel: () => void }) {
+function CompleteModal({ onSubmit, onCancel }: { onSubmit: (note: string, photo: File) => Promise<void> | void; onCancel: () => void }) {
   const [note, setNote] = useState('');
   const [photo, setPhoto] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -610,8 +611,8 @@ function CompleteModal({ onSubmit, onCancel }: { onSubmit: (note: string, photo:
     <>
       <header className="p-5 pb-0"><h3>Mark repair complete</h3></header>
       <div className="p-4 px-5 pt-3 space-y-4">
-        <p className="text-[13.5px] text-muted">Council will check the work before closing the job. A photo of the finished repair makes that quicker.</p>
-        <PhotoField onChange={setPhoto} label="Add a photo of the finished repair" />
+        <p className="text-[13.5px] text-muted">Council will check the work before closing the job. A photo of the finished repair is required.</p>
+        <PhotoField onChange={setPhoto} label="Photo of the finished repair (required)" />
         <div className="grid gap-1.5">
           <label className="label" htmlFor="done-note">Notes for council (optional)</label>
           <textarea id="done-note" className="textarea !min-h-[80px]" value={note} onChange={(e) => setNote(e.target.value)}
@@ -620,8 +621,8 @@ function CompleteModal({ onSubmit, onCancel }: { onSubmit: (note: string, photo:
       </div>
       <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
         <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-        <button className="btn btn-success" disabled={busy}
-                onClick={async () => { setBusy(true); await onSubmit(note.trim(), photo); setBusy(false); }}>
+        <button className="btn btn-success" disabled={busy || !photo} title={photo ? undefined : 'Add a photo first'}
+                onClick={async () => { if (!photo) return; setBusy(true); await onSubmit(note.trim(), photo); setBusy(false); }}>
           {busy ? 'Submitting…' : 'Mark complete'}
         </button>
       </footer>

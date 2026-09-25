@@ -255,9 +255,21 @@ export const api = {
     });
   },
 
+  /** Accepting a job starts it: Assigned → In progress. */
   async acceptAssignment(id: string, actorId: string): Promise<void> {
-    await this.updateDefect(id, { accepted_at: new Date().toISOString() });
-    await this.addUpdate(id, { action: 'Contractor accepted', note: 'Job accepted. Crew will be scheduled.' }, actorId, 'contractor');
+    await this.updateDefect(id, { status: 'progress', accepted_at: new Date().toISOString() });
+    await this.addUpdate(id, { action: 'Contractor accepted', note: 'Job accepted and in progress. Crew will be scheduled.', progress: 10 }, actorId, 'contractor');
+  },
+
+  /** Contractor finishes a job — a photo of the finished repair is required. Photo update + status change in one step. */
+  async completeJob(id: string, note: string, photoUrl: string, actorId: string): Promise<void> {
+    if (!HAS_SUPABASE) {
+      await this.addUpdate(id, { action: 'Repair complete', note: note || 'Site cleared. Waiting for council to verify.', progress: 100, photo_url: photoUrl }, actorId, 'contractor');
+      await this.updateDefect(id, { status: 'completed', progress: 100 });
+      return;
+    }
+    const { error } = await supabase.rpc('complete_job', { p_defect_id: id, p_note: note, p_photo_url: photoUrl });
+    if (error) throw error;
   },
 
   /** Contractor turns the job down — it goes back to the council as unassigned. */

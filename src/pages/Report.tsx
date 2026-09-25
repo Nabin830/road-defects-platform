@@ -75,6 +75,9 @@ export function ReportPage() {
       .slice(0, 3);
   }, [existing, lat, lng]);
 
+  // Same rule as the database: an open report within 150 m from the last hour blocks a new one
+  const blocking = nearby.find(({ d }) => Date.now() - new Date(d.reported_at).getTime() < 3600000) ?? null;
+
   const steps = ['Location', 'Details', 'Photo & submit'];
 
   // Look up the street address whenever the pin moves, and fill the road field unless the user typed their own
@@ -181,6 +184,7 @@ export function ReportPage() {
 
   function next() {
     if (step === 1 && (lat == null || lng == null)) return toast('warning', 'Pick a location', 'Tap on the map or use "Use my location".');
+    if (step === 1 && blocking) return toast('warning', 'Already reported', `${blocking.d.id} was reported ${Math.round(blocking.m)} m away in the last hour. Open it and tap "Back this report" instead.`);
     if (step === 1 && !place.trim()) return toast('warning', 'Add the road name', 'Tell the crew which road or landmark it is near.');
     if (step === 2 && (!type || !sev)) return toast('warning', 'Missing details', 'Choose a type and severity.');
     if (step === 2 && !titleOk) return toast('warning', 'Add a clear title', `Describe the problem in a few words (at least ${TITLE_MIN} characters).`);
@@ -192,16 +196,17 @@ export function ReportPage() {
     if (lat == null || lng == null || !type || !sev || !titleOk || !descOk) {
       return toast('warning', 'Fill in required fields', 'Something is missing.');
     }
+    if (!photoFile) return toast('warning', 'Add a photo', 'A photo of the defect is required so council can assess it.');
+    if (blocking) return toast('warning', 'Already reported', `Open ${blocking.d.id} and tap "Back this report" instead.`);
     if (!userId) return toast('warning', 'Sign in required', 'Create an account or sign in to submit a report.');
     setBusy(true);
     try {
-      let photo_url: string | null = null;
-      if (photoFile) {
-        try {
-          photo_url = await api.uploadPhoto(photoFile, userId);
-        } catch (err: any) {
-          toast('warning', 'Photo upload failed', err.message || 'Submitting without the photo.');
-        }
+      let photo_url: string;
+      try {
+        photo_url = await api.uploadPhoto(photoFile, userId);
+      } catch (err: any) {
+        toast('error', 'Photo upload failed', err.message || 'Please try again. A photo is required.');
+        return;
       }
       const created = await api.createDefect({
         title: title.trim(), description: desc.trim(), defect_type: type as DefectType, severity: sev as Severity,
@@ -290,8 +295,15 @@ export function ReportPage() {
             </div>
           )}
           {nearby.length > 0 && (
-            <div className="mt-5 p-4 rounded-lg bg-am-50 border border-am-500/25">
-              <div className="text-[13.5px] font-bold text-am-700 flex items-center gap-2"><IconAlert size={15} /> Already reported nearby?</div>
+            <div className={`mt-5 p-4 rounded-lg border ${blocking ? 'bg-rd-50 border-rd-600/30' : 'bg-am-50 border-am-500/25'}`}>
+              <div className={`text-[13.5px] font-bold flex items-center gap-2 ${blocking ? 'text-rd-700' : 'text-am-700'}`}>
+                <IconAlert size={15} /> {blocking ? 'This was reported in the last hour' : 'Already reported nearby?'}
+              </div>
+              {blocking && (
+                <p className="text-[12.5px] text-rd-700 mt-1">
+                  A new report can't be sent within {NEARBY_M} m of an open report from the last hour. Back the existing report below instead.
+                </p>
+              )}
               <p className="text-[12.5px] text-am-700 mt-1 mb-3">
                 {nearby.length === 1 ? 'There is an open report' : `There are ${nearby.length} open reports`} within {NEARBY_M} m of this spot.
                 If it's the same problem, open it and tap <b>Back this report</b> — that raises its priority instead of creating a duplicate.
@@ -368,7 +380,7 @@ export function ReportPage() {
       {step === 3 && (
         <section className="card p-6 space-y-6">
           <div>
-            <h3 className="mb-2">Add a photo <span className="text-muted text-sm font-normal">(recommended)</span></h3>
+            <h3 className="mb-2">Add a photo <span className="text-rd-600">*</span></h3>
             <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
                    onChange={(e) => pickPhoto(e.target.files?.[0])} />
             {photoPreview ? (
@@ -419,7 +431,7 @@ export function ReportPage() {
         {step < 3 ? (
           <button className="btn btn-primary" onClick={next}>Next <IconRight size={16} /></button>
         ) : (
-          <button className="btn btn-success" onClick={submit} disabled={busy}>
+          <button className="btn btn-success" onClick={submit} disabled={busy || !photoFile} title={photoFile ? undefined : 'Add a photo first'}>
             <IconCheck size={16} /> {busy ? 'Submitting…' : 'Submit report'}
           </button>
         )}
