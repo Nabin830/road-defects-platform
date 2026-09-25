@@ -218,10 +218,16 @@ export function ReportPage() {
         toast('error', 'Photo upload failed', err.message || 'Please try again. A photo is required.');
         return;
       }
-      const created = await api.createDefect({
-        title: title.trim(), description: desc.trim(), defect_type: type as DefectType, severity: sev as Severity,
-        road: place.trim(), latitude: lat, longitude: lng, photo_url,
-      }, userId);
+      let created;
+      try {
+        created = await api.createDefect({
+          title: title.trim(), description: desc.trim(), defect_type: type as DefectType, severity: sev as Severity,
+          road: place.trim(), latitude: lat, longitude: lng, photo_url,
+        }, userId);
+      } catch (err) {
+        api.deletePhoto(photo_url);   // the report was refused — don't leave its photo behind
+        throw err;
+      }
       toast('success', `Report submitted — ${created.id}`, 'Council will review it and assign a contractor.');
       nav('/my-reports');
     } catch (err: any) {

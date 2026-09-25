@@ -13,14 +13,25 @@ import { relativeTime } from '../lib/utils';
 
 type View = 'map' | 'grid' | 'table';
 
+/** View and filters survive opening a report and pressing Back (kept for this browser tab only). */
+const KEY = 'roadfix-defects-view';
+type Saved = { view: View; status: DefectStatus | 'all'; sevSet: Severity[]; type: DefectType | 'all'; q: string };
+function loadSaved(): Partial<Saved> {
+  try { return JSON.parse(sessionStorage.getItem(KEY) || '{}'); } catch { return {}; }
+}
+
 export function DefectsPage() {
   const { userId } = useAuth();
   const [defects, setDefects] = useState<Defect[]>([]);
-  const [view, setView] = useState<View>('map');
-  const [status, setStatus] = useState<DefectStatus | 'all'>('all');
-  const [sevSet, setSevSet] = useState<Severity[]>([]);
-  const [type, setType] = useState<DefectType | 'all'>('all');
-  const [q, setQ] = useState('');
+  const [saved] = useState(loadSaved);
+  const [view, setView] = useState<View>(saved.view ?? 'map');
+  const [status, setStatus] = useState<DefectStatus | 'all'>(saved.status ?? 'all');
+  const [sevSet, setSevSet] = useState<Severity[]>(saved.sevSet ?? []);
+  const [type, setType] = useState<DefectType | 'all'>(saved.type ?? 'all');
+  const [q, setQ] = useState(saved.q ?? '');
+  useEffect(() => {
+    try { sessionStorage.setItem(KEY, JSON.stringify({ view, status, sevSet, type, q } satisfies Saved)); } catch { /* storage blocked */ }
+  }, [view, status, sevSet, type, q]);
   const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);

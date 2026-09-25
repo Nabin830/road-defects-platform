@@ -33,17 +33,22 @@ export function DefectDetailPage() {
 
   useEffect(() => {
     if (!id) return;
+    // Ignore replies for a report the user has already navigated away from
+    let live = true;
+    const keep = <T,>(fn: (v: T) => void) => (v: T) => { if (live) fn(v); };
     setNotFound(false);
-    api.getDefect(id, userId).then(setDefect).catch(() => { setDefect(null); setNotFound(true); });
-    api.listUpdates(id).then(setUpdates).catch(() => setUpdates([]));
-    api.listContractors().then(setContractors).catch(() => {});
+    setUpdates([]);
+    api.getDefect(id, userId).then(keep(setDefect)).catch(() => { if (live) { setDefect(null); setNotFound(true); } });
+    api.listUpdates(id).then(keep(setUpdates)).catch(() => {});
+    api.listContractors().then(keep(setContractors)).catch(() => {});
     if (userId) {
-      api.hasVoted(id, userId).then(setVoted).catch(() => {});
-      api.isFollowing(id, userId).then(setFollowing).catch(() => {});
+      api.hasVoted(id, userId).then(keep(setVoted)).catch(() => {});
+      api.isFollowing(id, userId).then(keep(setFollowing)).catch(() => {});
     } else {
       setVoted(false);
       setFollowing(false);
     }
+    return () => { live = false; };
   }, [id, userId]);
 
   async function refresh() {

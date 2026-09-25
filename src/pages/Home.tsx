@@ -34,7 +34,7 @@ export function HomePage() {
   const recent = defects.slice(0, 3);
 
   return (
-    <>
+    <main>
       {/* HERO */}
       <section className="hero-grad py-16 md:py-24">
         <div className="w-full max-w-[1280px] mx-auto px-6 grid md:grid-cols-2 gap-10 items-center">
@@ -126,6 +126,6 @@ export function HomePage() {
           </div>
         </section>
       )}
-    </>
+    </main>
   );
 }

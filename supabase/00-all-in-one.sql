@@ -679,6 +679,9 @@ create or replace function public.sanitize_new_report()
 returns trigger as $$
 begin
   if auth.uid() is null or public.is_admin() then return new; end if;
+  if new.id !~ '^RD-[A-Z0-9]{6,14}$' then
+    raise exception 'Invalid report ID.';
+  end if;
   new.status := 'pending';           new.votes := 0;              new.progress := 0;
   new.contractor_id := null;         new.accepted_at := null;     new.verified_at := null;
   new.reject_reason := null;         new.work_instructions := null; new.due_at := null;

@@ -24,8 +24,16 @@ interface UIState {
 
 let toastSeq = 0;
 
+/** Saved theme; browser storage can be blocked (e.g. some private modes), so never let that break start-up. */
+function savedTheme(): 'light' | 'dark' {
+  try {
+    const t = localStorage.getItem('roadfix-theme') ?? localStorage.getItem('rdap-theme');
+    return t === 'dark' ? 'dark' : 'light';
+  } catch { return 'light'; }
+}
+
 export const useUI = create<UIState>((set, get) => ({
-  theme: (typeof localStorage !== 'undefined' && ((localStorage.getItem('roadfix-theme') ?? localStorage.getItem('rdap-theme')) as 'light' | 'dark')) || 'light',
+  theme: savedTheme(),
   sim: 'desktop',
   toasts: [],
   modal: null,

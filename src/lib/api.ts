@@ -201,7 +201,7 @@ export const api = {
     return rows.map(r => mapDefect(r, myUserId));
   },
 
-  async createDefect(input: CreateDefectInput, userId: string): Promise<Defect> {
+  async createDefect(input: CreateDefectInput, userId: string, attempt = 1): Promise<Defect> {
     const id = newDefectId();
     if (!HAS_SUPABASE) {
       const row: Omit<Defect, 'daysAgo' | 'mine'> = {
@@ -231,6 +231,8 @@ export const api = {
       reported_by: userId,
     };
     const { data, error } = await supabase.from('defects').insert(insert).select().single();
+    // Two reports generated the same ID in the same second — try once more with a fresh one
+    if (error?.code === '23505' && attempt < 3) return this.createDefect(input, userId, attempt + 1);
     if (error) throw error;
     // The report is saved at this point — a failed timeline entry mustn't make it look like it failed
     await this.addUpdate(id, { action: 'Report submitted', note: 'Report captured with location and description.', progress: 0 }, userId, 'citizen')
@@ -528,6 +530,15 @@ export const api = {
   },
 
   /* ── photo storage ──────────────────────────────────────────────── */
+  /** Removes a photo this user uploaded (used when the report it was for is refused). Best effort. */
+  async deletePhoto(publicUrl: string): Promise<void> {
+    if (!HAS_SUPABASE) return;
+    const marker = '/object/public/defect-photos/';
+    const i = publicUrl.indexOf(marker);
+    if (i < 0) return;
+    await supabase.storage.from('defect-photos').remove([decodeURIComponent(publicUrl.slice(i + marker.length))]).catch(() => {});
+  },
+
   async uploadPhoto(original: File, userId: string): Promise<string> {
     if (!HAS_SUPABASE) return URL.createObjectURL(original); // local preview only, not persisted
     const file = await shrinkPhoto(original);
