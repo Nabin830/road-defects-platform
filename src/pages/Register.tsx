@@ -82,7 +82,7 @@ export function RegisterPage() {
                   { v: 'contractor' as Role, i: IconTruck, t: "I'm a contractor", s: 'Receive and complete council jobs' },
                 ].map(({ v, i: Ic, t, s }) => (
                   <label key={v} onClick={() => setRole(v)}
-                         className={`card p-3.5 cursor-pointer grid gap-1.5 ${role === v ? 'border-brand bg-brand-soft' : ''}`}>
+                         className={`card p-3.5 cursor-pointer grid content-start gap-1.5 ${role === v ? 'border-brand bg-brand-soft' : ''}`}>
                     <div className="flex items-center justify-between">
                       <span className={role === v ? 'text-brand' : 'text-muted'}><Ic size={19} /></span>
                       <input type="radio" name="rrole" value={v} checked={role === v} onChange={() => setRole(v)} className="accent-brand" />
@@ -106,7 +106,7 @@ export function RegisterPage() {
               <label className="label" htmlFor="rg-e">Email address</label>
               <input id="rg-e" type="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)}
                      placeholder="you@example.com" autoComplete="email" required />
-              <span className="ok"><IconCheck size={13} /> We'll send repair updates here</span>
+              <span className="hint">Used to sign in only. RoadFix never sends emails — updates appear in the app.</span>
             </div>
 
             <div className="grid gap-1.5">
