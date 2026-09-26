@@ -237,7 +237,7 @@ export function DefectDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_auto_1fr] gap-6 items-start">
           <div className="card overflow-hidden order-1 lg:order-none lg:col-start-1">
             {defect.photo_url && (
-              <Photo src={defect.photo_url} alt={defect.title} loading="eager" fetchPriority="high" className="block w-full max-h-[420px] object-cover bg-surface-2 cursor-zoom-in"
+              <Photo src={defect.photo_url} alt={defect.title} loading="eager" {...{ fetchpriority: 'high' }} className="block w-full max-h-[420px] object-cover bg-surface-2 cursor-zoom-in"
                      onClick={() => window.open(defect.photo_url!, '_blank', 'noopener')} />
             )}
             <div className="p-6">
