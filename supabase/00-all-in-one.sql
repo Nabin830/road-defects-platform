@@ -7,18 +7,30 @@
 --   STEP 0. WIPE      — deletes ALL previous tables, data, functions,
 --                       triggers and policies in the public schema
 --   STEP 1. SCHEMA    — tables, indexes, triggers
---   STEP 2. POLICIES  — row level security
+--   STEP 2. POLICIES  — row level security, plus the rules the website
+--                       relies on:
+--                         • work orders and council-set fix-by dates
+--                         • stage order (pending → assigned → in progress
+--                           → completed → verified), required photos
+--                         • spam limits, duplicate blocking (150 m / 1 hour),
+--                           council-area check, text limits
+--                         • anti-tamper: each role can only change what
+--                           the website lets it change
 --   STEP 3. FOLLOWERS — "follow updates" table + in-app notifications
 --   STEP 4. STORAGE   — defect-photos bucket + policies
 --   STEP 5. USERS     — re-creates profiles for existing auth users and
 --                       makes council@gmail.com an admin
 --
 -- No dummy data: contractors, defects, updates etc. all start EMPTY.
+-- Sign-in accounts (Authentication → Users) are kept; their profiles are
+-- re-created as residents, and council@gmail.com becomes council.
+--
+-- Safe to run again at any time (it wipes and rebuilds). It includes
+-- everything from 01 → 06, so you never need those if you run this.
 --
 -- ⚠️  STEP 0 IS DESTRUCTIVE. Every table in the public schema and all
 --     of its data is permanently deleted. There is no undo.
 --
--- This file replaces running 01 → 06 one by one.
 -- ═══════════════════════════════════════════════════════════════════
 
 
