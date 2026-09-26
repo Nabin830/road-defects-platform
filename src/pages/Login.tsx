@@ -8,6 +8,7 @@ import { useUI } from '../store/ui';
 import { HAS_SUPABASE } from '../lib/supabase';
 import { IconMail, IconLock, IconEye, IconShield } from '../lib/icons';
 import { useSeo } from '../lib/seo';
+import { errorMessage } from '../lib/utils';
 
 export function LoginPage() {
   useSeo({ title: 'Sign in', description: 'Sign in to RoadFix to report road defects and follow repairs in Orange, NSW.', noindex: true });
@@ -33,16 +34,16 @@ export function LoginPage() {
         // role will be updated by store; read it fresh
         const r = useAuth.getState().role;
         toast('success', 'Welcome back', 'Signed in successfully.');
-        nav(from || (r === 'admin' ? '/admin' : r === 'contractor' ? '/contractor' : '/dashboard'));
+        void nav(from || (r === 'admin' ? '/admin' : r === 'contractor' ? '/contractor' : '/dashboard'));
       } else {
         // Demo mode: pick role by email prefix
         const inferred = email.startsWith('admin') ? 'admin' : email.startsWith('contractor') ? 'contractor' : 'citizen';
         setDemoRole(inferred);
         toast('success', 'Signed in (demo)', 'Configure Supabase for real accounts.');
-        nav(inferred === 'admin' ? '/admin' : inferred === 'contractor' ? '/contractor' : '/dashboard');
+        void nav(inferred === 'admin' ? '/admin' : inferred === 'contractor' ? '/contractor' : '/dashboard');
       }
-    } catch (err: any) {
-      toast('error', 'Sign in failed', err.message || 'Check your email and password.');
+    } catch (err) {
+      toast('error', 'Sign in failed', errorMessage(err, 'Check your email and password.'));
     } finally {
       setBusy(false);
     }

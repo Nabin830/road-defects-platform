@@ -27,7 +27,7 @@ export const useNotifications = create<NotificationState>((set, get) => ({
     set({ userId, items: [] });
     if (!userId) return;
 
-    get().refresh();
+    void get().refresh();
     unsubscribe = api.subscribeNotifications(userId, (n) => {
       if (get().items.some(i => i.id === n.id)) return;
       set({ items: [n, ...get().items] });

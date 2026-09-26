@@ -42,9 +42,9 @@ export function ContractorPage() {
     return (
       <main className="w-full max-w-[900px] mx-auto px-6 py-8">
         <div className="card p-10 text-center">
-          <h1 className="mb-2">Not linked to a contractor account</h1>
-          <p className="text-muted">Your login isn't attached to a contractor company yet. Ask council admin to link your
-            profile to a contractor record — once that's done, your assigned work will appear here.</p>
+          <h1 className="mb-2">Not linked to a company yet</h1>
+          <p className="text-muted">Your account isn't attached to a contractor company. Ask council to set your role to
+            Contractor on their People page and choose your company — your assigned jobs will then appear here.</p>
         </div>
       </main>
     );

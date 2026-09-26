@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { useUI } from '../store/ui';
-import { fmt, initialsOf } from '../lib/utils';
+import { fmt, initialsOf, errorMessage } from '../lib/utils';
 import { IconSearch, IconPlus, IconUsers, IconTruck, IconCheck, IconX } from '../lib/icons';
 import type { Contractor, Defect, Profile, Role } from '../lib/types';
 import { useSeo } from '../lib/seo';
+import { ROLE_LABEL } from '../lib/constants';
 
-const ROLE_LABEL: Record<Role, string> = { citizen: 'Resident', contractor: 'Contractor', admin: 'Council' };
 const ROLE_CLS: Record<Role, string> = {
   admin: 'bg-blue-50 text-blue-700 border-blue-600/25',
   contractor: 'bg-pu-50 text-pu-700 border-pu-600/25',
@@ -30,11 +30,11 @@ export function PeoplePage() {
     try {
       const [p, c, d] = await Promise.all([api.listProfiles(), api.listContractors(), api.listDefects({})]);
       setPeople(p); setCompanies(c); setDefects(d);
-    } catch (err: any) {
-      toast('error', 'Could not load people', err.message || 'Please refresh.');
+    } catch (err) {
+      toast('error', 'Could not load people', errorMessage(err, 'Please refresh.'));
     } finally { setLoading(false); }
   }
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const counts = useMemo(() => ({
     all: people.length,
@@ -68,9 +68,9 @@ export function PeoplePage() {
             closeModal();
             toast('success', 'Role updated', `${p.name} is now ${ROLE_LABEL[role].toLowerCase()}. They'll see it next time they open the app.`);
             await load();
-          } catch (err: any) {
+          } catch (err) {
             closeModal();
-            toast('error', 'Could not change role', err.message || 'Please try again.');
+            toast('error', 'Could not change role', errorMessage(err, 'Please try again.'));
           }
         }}
       />,
@@ -185,7 +185,7 @@ function Companies({ companies, people, defects, onChanged }: {
       setNewName('');
       toast('success', 'Company added', 'Link contractor accounts to it from the People tab.');
       await onChanged();
-    } catch (err: any) { toast('error', 'Could not add company', err.message || 'Please try again.'); }
+    } catch (err) { toast('error', 'Could not add company', errorMessage(err, 'Please try again.')); }
   }
 
   async function rename(c: Contractor) {
@@ -195,7 +195,7 @@ function Companies({ companies, people, defects, onChanged }: {
       setEditing(null);
       toast('success', 'Company renamed', editName.trim());
       await onChanged();
-    } catch (err: any) { toast('error', 'Could not rename', err.message || 'Please try again.'); }
+    } catch (err) { toast('error', 'Could not rename', errorMessage(err, 'Please try again.')); }
   }
 
   return (
@@ -222,7 +222,7 @@ function Companies({ companies, people, defects, onChanged }: {
                     <div className="flex gap-1.5 flex-1">
                       <input className="input !min-h-[36px] !py-1.5" maxLength={80} value={editName} autoFocus aria-label="Company name"
                              onChange={(e) => setEditName(e.target.value)}
-                             onKeyDown={(e) => { if (e.key === 'Enter') rename(c); if (e.key === 'Escape') setEditing(null); }} />
+                             onKeyDown={(e) => { if (e.key === 'Enter') void rename(c); if (e.key === 'Escape') setEditing(null); }} />
                       <button className="icon-btn !text-em-600" onClick={() => rename(c)} aria-label="Save name"><IconCheck size={16} /></button>
                       <button className="icon-btn" onClick={() => setEditing(null)} aria-label="Cancel"><IconX size={16} /></button>
                     </div>

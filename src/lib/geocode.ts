@@ -10,9 +10,11 @@ type LookupBody = { mode: 'reverse'; lat: number; lng: number } | { mode: 'searc
 async function lookup<T>(body: LookupBody, directUrl: string, signal?: AbortSignal): Promise<T | null> {
   if (proxyAvailable) {
     try {
-      const { data, error } = await supabase.functions.invoke('geocode', { body });
+      const res = await supabase.functions.invoke<T & { error?: string }>('geocode', { body });
+      const data = res.data;
+      const error: unknown = res.error;   // the library types this as `any`
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-      if (!error && data && !(data as { error?: string }).error) return data as T;
+      if (!error && data && !(data as { error?: string }).error) return data;
       if (error) proxyAvailable = false;
     } catch (e) {
       if ((e as Error).name === 'AbortError') throw e;

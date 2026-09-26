@@ -18,7 +18,7 @@ if (window.location.hash.startsWith('#/')) {
 
 // initialize theme + auth once
 useUI.getState().setTheme(useUI.getState().theme);
-useAuth.getState().init();
+useAuth.getState().init().catch((err) => console.error('[RoadFix] sign-in check failed:', err));
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>

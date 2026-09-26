@@ -21,7 +21,7 @@ void import('../components/LeafletMap');
 const KEY = 'roadfix-defects-view';
 type Saved = { view: View; status: DefectStatus | 'all'; sevSet: Severity[]; type: DefectType | 'all'; q: string };
 function loadSaved(): Partial<Saved> {
-  try { return JSON.parse(sessionStorage.getItem(KEY) || '{}'); } catch { return {}; }
+  try { return JSON.parse(sessionStorage.getItem(KEY) || '{}') as Partial<Saved>; } catch { return {}; }
 }
 
 export function DefectsPage() {

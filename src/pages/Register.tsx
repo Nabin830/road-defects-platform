@@ -9,6 +9,7 @@ import { HAS_SUPABASE } from '../lib/supabase';
 import { IconUser, IconTruck, IconAlert, IconCheck } from '../lib/icons';
 import type { Role } from '../lib/types';
 import { useSeo } from '../lib/seo';
+import { errorMessage } from '../lib/utils';
 
 export function RegisterPage() {
   useSeo({ title: 'Create an account', description: 'Create a free RoadFix account to report potholes and road damage in Orange, NSW and follow each repair.' });
@@ -40,14 +41,14 @@ export function RegisterPage() {
       if (HAS_SUPABASE) {
         await signUp(email, password, name, role);
         toast('success', 'Account created', 'Welcome to RoadFix!');
-        nav(role === 'contractor' ? '/contractor' : '/dashboard');
+        void nav(role === 'contractor' ? '/contractor' : '/dashboard');
       } else {
         setDemoRole(role);
         toast('success', 'Account created (demo)', 'Configure Supabase to enable real accounts.');
-        nav(role === 'contractor' ? '/contractor' : '/dashboard');
+        void nav(role === 'contractor' ? '/contractor' : '/dashboard');
       }
-    } catch (err: any) {
-      toast('error', 'Registration failed', err.message || 'Try a different email.');
+    } catch (err) {
+      toast('error', 'Registration failed', errorMessage(err, 'Try a different email.'));
     } finally {
       setBusy(false);
     }

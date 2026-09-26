@@ -32,11 +32,11 @@ export function App() {
   const refreshProfile = useAuth(s => s.refreshProfile);
   // Pick up role changes made by council (e.g. promoted to admin) without signing out and in again
   useEffect(() => {
-    const onFocus = () => { refreshProfile(); };
+    const onFocus = () => { refreshProfile().catch(() => {}); };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [refreshProfile]);
-  useEffect(() => { refreshProfile(); }, [loc.pathname, refreshProfile]);
+  useEffect(() => { refreshProfile().catch(() => {}); }, [loc.pathname, refreshProfile]);
   // New page → start at the top (a SPA keeps the old scroll position otherwise)
   useEffect(() => { window.scrollTo(0, 0); }, [loc.pathname]);
   const bareLayout = loc.pathname === '/login' || loc.pathname === '/register';

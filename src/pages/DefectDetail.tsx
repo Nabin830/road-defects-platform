@@ -11,7 +11,7 @@ import { PhotoField } from '../components/PhotoField';
 import { Photo, PhotoMissing } from '../components/Photo';
 import { IconArrow, IconStar, IconWrench, IconCheck, IconAlert, IconLeft } from '../lib/icons';
 import { typeOf, SEVERITY } from '../lib/constants';
-import { fmt } from '../lib/utils';
+import { fmt, errorMessage } from '../lib/utils';
 import { slaStatus, dueDate, DEFAULT_FIX_DAYS } from '../lib/sla';
 import { SlaChip } from '../components/SlaChip';
 import type { Defect, RepairUpdate, Contractor, Severity as Sev } from '../lib/types';
@@ -88,7 +88,7 @@ export function DefectDetailPage() {
 
   async function run(fn: () => Promise<void>, errTitle: string) {
     try { await fn(); }
-    catch (err: any) { toast('error', errTitle, err.message || 'Please try again.'); }
+    catch (err) { toast('error', errTitle, errorMessage(err, 'Please try again.')); }
   }
 
   function acceptJob() {
@@ -136,7 +136,7 @@ export function DefectDetailPage() {
       await api.declineAssignment(defect.id, reason, userId!);
       closeModal();
       toast('info', 'Job declined', 'Council has been notified to reassign it.');
-      nav('/contractor');
+      void nav('/contractor');
     }, 'Could not decline job')} onCancel={closeModal} />);
   }
 
@@ -201,8 +201,8 @@ export function DefectDetailPage() {
       if (voted) { await api.unvote(defect.id, userId); setVoted(false); }
       else { await api.vote(defect.id, userId); setVoted(true); }
       await refresh();
-    } catch (err: any) {
-      toast('error', 'Could not update backing', err.message || 'Please try again.');
+    } catch (err) {
+      toast('error', 'Could not update backing', errorMessage(err, 'Please try again.'));
     } finally { setVoteBusy(false); }
   }
 
@@ -213,8 +213,8 @@ export function DefectDetailPage() {
     try {
       if (following) { await api.unfollow(defect.id, userId); setFollowing(false); toast('info', 'Unfollowed', "You won't get notifications for this report any more."); }
       else { await api.follow(defect.id, userId); setFollowing(true); toast('success', 'Following this defect', 'Updates will appear under the bell icon on this website. No emails are sent.'); }
-    } catch (err: any) {
-      toast('error', 'Could not update follow status', err.message || 'Please try again.');
+    } catch (err) {
+      toast('error', 'Could not update follow status', errorMessage(err, 'Please try again.'));
     } finally { setFollowBusy(false); }
   }
 
@@ -231,7 +231,7 @@ export function DefectDetailPage() {
 
   return (
     <main className="w-full max-w-[1280px] mx-auto px-6 py-8">
-      <button onClick={() => ((window.history.state?.idx ?? 0) > 0 ? nav(-1) : nav('/defects'))} className="btn btn-ghost btn-sm mb-4"><IconLeft size={14} /> Back</button>
+      <button onClick={() => { const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0; void (idx > 0 ? nav(-1) : nav('/defects')); }} className="btn btn-ghost btn-sm mb-4"><IconLeft size={14} /> Back</button>
 
       {/* Mobile order: summary → actions → map → timeline. Desktop: two columns. */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_auto_1fr] gap-6 items-start">

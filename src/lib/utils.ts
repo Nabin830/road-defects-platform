@@ -1,3 +1,12 @@
+/** A readable message from anything that was thrown (Error, Supabase error object, string…). */
+export function errorMessage(err: unknown, fallback = 'Please try again.'): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === 'object' && err && 'message' in err && typeof (err).message === 'string') {
+    return (err as { message: string }).message || fallback;
+  }
+  return typeof err === 'string' && err ? err : fallback;
+}
+
 /** Photo links come from the database, so never trust them blindly: only web, blob and same-site
  *  addresses are used — a "javascript:" link would otherwise run code when someone clicks the photo. */
 export function safePhotoUrl(url: string | null | undefined): string | null {

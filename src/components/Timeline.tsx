@@ -1,6 +1,7 @@
 import type { RepairUpdate } from '../lib/types';
 import { Photo, PhotoMissing } from './Photo';
 import { relativeTime } from '../lib/utils';
+import { ROLE_LABEL } from '../lib/constants';
 import { IconCheck, IconClock } from '../lib/icons';
 
 export function Timeline({ updates }: { updates: RepairUpdate[] }) {
@@ -18,7 +19,7 @@ export function Timeline({ updates }: { updates: RepairUpdate[] }) {
             <div className="pt-1">
               <div className="text-[13.5px] font-semibold text-ink">{u.action}</div>
               <div className="text-[11.5px] text-muted mt-0.5">
-                {u.actor_role === 'admin' ? 'Council' : u.actor_role === 'citizen' ? 'Resident' : u.actor_role === 'contractor' ? 'Contractor' : 'System'}
+                {u.actor_role ? ROLE_LABEL[u.actor_role] : 'System'}
                 {' · '}
                 {relativeTime(u.created_at)}
               </div>

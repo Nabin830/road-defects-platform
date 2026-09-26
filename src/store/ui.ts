@@ -38,7 +38,7 @@ export const useUI = create<UIState>((set, get) => ({
   toggleTheme() { get().setTheme(get().theme === 'dark' ? 'light' : 'dark'); },
   setTheme(t) {
     document.documentElement.setAttribute('data-theme', t);
-    try { localStorage.setItem('roadfix-theme', t); localStorage.removeItem('rdap-theme'); } catch {}
+    try { localStorage.setItem('roadfix-theme', t); localStorage.removeItem('rdap-theme'); } catch { /* storage blocked — theme still applies for this visit */ }
     set({ theme: t });
   },
   toast(kind, title, message) {

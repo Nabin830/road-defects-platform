@@ -22,7 +22,7 @@ export function AdminPage() {
   useEffect(() => {
     api.listDefects({}).then(setDefects).catch(() => toast('error', "Couldn't load reports", 'Check your connection, then refresh the page.'));
     api.listContractors().then(setContractors).catch(() => {});
-  }, []);
+  }, [toast]);
 
   const total = defects.length;
   const byStatus: Record<DefectStatus, number> = { pending: 0, assigned: 0, progress: 0, completed: 0, rejected: 0 };
@@ -48,7 +48,7 @@ export function AdminPage() {
       ['Verified', d => d.verified_at], ['Reject reason', d => d.reject_reason],
     ];
     const esc = (v: unknown) => {
-      let s = v == null ? '' : String(v);
+      let s = v == null ? '' : typeof v === 'string' ? v : typeof v === 'number' || typeof v === 'boolean' ? String(v) : JSON.stringify(v);
       // Text typed by the public could start with = + - @ and run as a formula in Excel — neutralise it
       if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;

@@ -3,12 +3,12 @@ import { api } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { useUI } from '../store/ui';
 import { HAS_SUPABASE } from '../lib/supabase';
-import { initialsOf } from '../lib/utils';
+import { initialsOf, errorMessage } from '../lib/utils';
 import { IconCheck, IconLock, IconUser, IconTruck } from '../lib/icons';
 import type { Contractor } from '../lib/types';
 import { useSeo } from '../lib/seo';
+import { ROLE_LABEL } from '../lib/constants';
 
-const ROLE_LABEL = { citizen: 'Resident', contractor: 'Contractor', admin: 'Council' } as const;
 
 export function ProfilePage() {
   useSeo({ title: 'Profile & settings', noindex: true });
@@ -53,8 +53,8 @@ export function ProfilePage() {
       }
       await refreshProfile(true);
       toast('success', 'Profile saved', 'Your details have been updated.');
-    } catch (err: any) {
-      toast('error', 'Could not save', err.message || 'Please try again.');
+    } catch (err) {
+      toast('error', 'Could not save', errorMessage(err, 'Please try again.'));
     } finally { setSaving(false); }
   }
 
@@ -67,8 +67,8 @@ export function ProfilePage() {
       await api.changePassword(pw);
       setPw(''); setPw2('');
       toast('success', 'Password changed', 'Use your new password next time you sign in.');
-    } catch (err: any) {
-      toast('error', 'Could not change password', err.message || 'Please try again.');
+    } catch (err) {
+      toast('error', 'Could not change password', errorMessage(err, 'Please try again.'));
     } finally { setPwBusy(false); }
   }
 

@@ -62,11 +62,14 @@ export const useAuth = create<AuthState>((set, get) => ({
       }, 0);
     });
 
-    const { data } = await supabase.auth.getSession();
-    if (data.session) {
-      const profile = await loadProfile(data.session.user.id);
-      set({ ready: true, userId: data.session.user.id, profile, role: profile?.role || 'citizen', authed: true });
-    } else {
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        const profile = await loadProfile(data.session.user.id);
+        set({ userId: data.session.user.id, profile, role: profile?.role || 'citizen', authed: true });
+      }
+    } finally {
+      // Even if the session check fails (e.g. offline), stop showing "Loading…" — the user can sign in again
       set({ ready: true });
     }
   },

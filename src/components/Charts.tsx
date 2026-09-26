@@ -112,7 +112,7 @@ export function ColumnChart({ categories, series, height = 240, format = (n) => 
                     )}
                     {/* Hit target: the whole band, bigger than the columns */}
                     <rect x={x0} y={pad.top} width={band} height={plotH} fill="transparent" tabIndex={0}
-                          aria-label={`${c}: ${series.map(s => `${s.label} ${s.values[i] == null ? 'no data' : format(s.values[i]!)}`).join(', ')}`}
+                          aria-label={`${c}: ${series.map(s => `${s.label} ${s.values[i] == null ? 'no data' : format(s.values[i])}`).join(', ')}`}
                           onPointerEnter={() => setActive(i)} onFocus={() => setActive(i)} onBlur={() => setActive(null)}
                           style={{ outline: 'none' }} />
                   </g>
@@ -130,7 +130,7 @@ export function ColumnChart({ categories, series, height = 240, format = (n) => 
               {series.map(s => (
                 <div key={s.key} className="flex items-center gap-2 text-[12.5px]">
                   <i className="w-3 h-[2px] block rounded" style={{ background: s.color }} />
-                  <b className="text-ink mono">{s.values[active] == null ? '—' : format(s.values[active]!)}</b>
+                  <b className="text-ink mono">{s.values[active] == null ? '—' : format(s.values[active])}</b>
                   <span className="text-muted">{s.label}</span>
                 </div>
               ))}
@@ -179,7 +179,7 @@ function DataTable({ title, categories, series, format }: { title: string; categ
           {categories.map((c, i) => (
             <tr key={c} className="border-b border-border last:border-0">
               <td className="py-2 pr-3 text-ink-2">{c}</td>
-              {series.map(s => <td key={s.key} className="py-2 px-3 text-right mono">{s.values[i] == null ? '—' : format(s.values[i]!)}</td>)}
+              {series.map(s => <td key={s.key} className="py-2 px-3 text-right mono">{s.values[i] == null ? '—' : format(s.values[i])}</td>)}
             </tr>
           ))}
         </tbody>

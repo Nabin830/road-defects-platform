@@ -39,7 +39,7 @@ export function DefectMap({ defects, height = 400, onPick, pickedLat, pickedLng,
       const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[data-defect]');
       if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;   // let "open in new tab" work
       e.preventDefault();
-      navRef.current(`/defect/${a.dataset.defect}`);
+      void navRef.current(`/defect/${a.dataset.defect}`);
     };
     box.addEventListener('click', onPopupLink);
 

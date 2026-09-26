@@ -12,6 +12,7 @@ import type { Defect, DefectType, Severity } from '../lib/types';
 import { SeverityChip } from '../components/Severity';
 import { StatusBadge } from '../components/Badge';
 import { useSeo } from '../lib/seo';
+import { errorMessage } from '../lib/utils';
 
 /** Distance in metres between two lat/lng points. */
 function metres(aLat: number, aLng: number, bLat: number, bLng: number) {
@@ -22,6 +23,7 @@ function metres(aLat: number, aLng: number, bLat: number, bLng: number) {
 }
 const NEARBY_M = 150;
 
+// Must match the database (check_report_text in supabase/00-all-in-one.sql), which enforces the same limits
 const TITLE_MIN = 8, TITLE_MAX = 100, DESC_MIN = 20, DESC_MAX = 2000;
 
 /** Rejects keyboard mashing like "ghh" / "aaaaaaa": needs real words, not one repeated character. */
@@ -167,7 +169,7 @@ export function ReportPage() {
         setLocating(false);
         toast('error', 'Could not get location', err.code === err.PERMISSION_DENIED
           ? 'Location permission is blocked. Allow it in your browser settings, or tap the map instead.'
-          : err.message || 'Check location permissions and try again.');
+          : errorMessage(err, 'Check location permissions and try again.'));
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 },
     );
@@ -216,24 +218,24 @@ export function ReportPage() {
       let photo_url: string;
       try {
         photo_url = await api.uploadPhoto(photoFile, userId);
-      } catch (err: any) {
-        toast('error', 'Photo upload failed', err.message || 'Please try again. A photo is required.');
+      } catch (err) {
+        toast('error', 'Photo upload failed', errorMessage(err, 'Please try again. A photo is required.'));
         return;
       }
       let created;
       try {
         created = await api.createDefect({
-          title: title.trim(), description: desc.trim(), defect_type: type as DefectType, severity: sev as Severity,
+          title: title.trim(), description: desc.trim(), defect_type: type, severity: sev,
           road: place.trim(), latitude: lat, longitude: lng, photo_url,
         }, userId);
       } catch (err) {
-        api.deletePhoto(photo_url);   // the report was refused — don't leave its photo behind
+        void api.deletePhoto(photo_url);   // the report was refused — don't leave its photo behind
         throw err;
       }
       toast('success', `Report submitted — ${created.id}`, 'Council will review it and assign a contractor.');
-      nav('/my-reports');
-    } catch (err: any) {
-      toast('error', 'Could not submit report', err.message || 'Please try again.');
+      void nav('/my-reports');
+    } catch (err) {
+      toast('error', 'Could not submit report', errorMessage(err, 'Please try again.'));
     } finally { setBusy(false); }
   }
 
@@ -427,7 +429,7 @@ export function ReportPage() {
             <div className="grid grid-cols-[100px_1fr] gap-x-4 gap-y-1.5">
               <div className="text-muted">Location</div><div className="font-semibold">{place || '—'}</div>
               <div className="text-muted">Type</div><div className="font-semibold">{type ? TYPES.find(t => t.id === type)?.label : '—'}</div>
-              <div className="text-muted">Severity</div><div className="font-semibold">{sev ? SEVERITY[sev as Severity].label : '—'}</div>
+              <div className="text-muted">Severity</div><div className="font-semibold">{sev ? SEVERITY[sev].label : '—'}</div>
               <div className="text-muted">Title</div><div className="font-semibold">{title || '—'}</div>
             </div>
           </div>

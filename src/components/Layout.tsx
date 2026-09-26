@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { useAuth } from '../store/auth';
 import { useUI } from '../store/ui';
 import { useNotifications } from '../store/notifications';
-import { initialsOf, relativeTime } from '../lib/utils';
+import { initialsOf, relativeTime, errorMessage } from '../lib/utils';
 import { HAS_SUPABASE } from '../lib/supabase';
 import { BrandLogo } from './Brand';
 import {
@@ -11,10 +11,10 @@ import {
   IconMap, IconFile, IconCheckCircle, IconAlert, IconTruck, IconClock, IconCheck, IconX, IconFlag, IconUsers,
 } from '../lib/icons';
 import type { AppNotification, NotificationKind, Role } from '../lib/types';
+import { ROLE_LABEL } from '../lib/constants';
 
 type NavItem = { to: string; label: string; icon: ComponentType<{ size?: number }> };
 
-const ROLE_LABEL: Record<Role, string> = { citizen: 'Resident', contractor: 'Contractor', admin: 'Council' };
 
 function navFor(authed: boolean, role: Role): NavItem[] {
   if (authed && role === 'admin') return [
@@ -104,7 +104,10 @@ export function Navbar() {
                 name={profile?.name || ROLE_LABEL[role]}
                 email={profile?.email || ''}
                 role={role}
-                onSignOut={async () => { await signOut(); nav('/'); toast('info', 'Signed out', 'You can still browse the public map.'); }}
+                onSignOut={async () => {
+                  try { await signOut(); void nav('/'); toast('info', 'Signed out', 'You can still browse the public map.'); }
+                  catch (err) { toast('error', 'Could not sign out', errorMessage(err)); }
+                }}
               />
             </>
           ) : (
@@ -143,13 +146,13 @@ function NotificationBell() {
 
   function openItem(n: AppNotification) {
     setOpen(false);
-    markRead(n.id);
-    if (n.defect_id) nav(`/defect/${n.defect_id}`);
+    void markRead(n.id);
+    if (n.defect_id) void nav(`/defect/${n.defect_id}`);
   }
 
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => { if (!open) refresh(); setOpen(!open); }} className="icon-btn relative"
+      <button onClick={() => { if (!open) void refresh(); setOpen(!open); }} className="icon-btn relative"
               aria-label={unread ? `Notifications, ${unread} unread` : 'Notifications'} aria-expanded={open}>
         <IconBell size={17} />
         {unread > 0 && (

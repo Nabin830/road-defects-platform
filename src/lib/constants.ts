@@ -1,7 +1,11 @@
-import type { DefectStatus, Severity, DefectType } from './types';
+import type { DefectStatus, Severity, DefectType, Role } from './types';
+
+/** What each role is called on screen (the database says citizen/contractor/admin). */
+export const ROLE_LABEL: Record<Role, string> = { citizen: 'Resident', contractor: 'Contractor', admin: 'Council' };
 
 export const ORANGE = { lat: -33.2839, lng: 149.0988 };
-/** Generous box around the Orange City Council area — reports outside it are for another council. */
+/** Generous box around the Orange City Council area — reports outside it are for another council.
+ *  Must match in_council_area() in supabase/00-all-in-one.sql. */
 export const COUNCIL_AREA = { north: -33.12, south: -33.48, west: 148.88, east: 149.30 };
 export const inCouncilArea = (lat: number, lng: number) =>
   lat <= COUNCIL_AREA.north && lat >= COUNCIL_AREA.south && lng >= COUNCIL_AREA.west && lng <= COUNCIL_AREA.east;

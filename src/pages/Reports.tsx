@@ -7,6 +7,7 @@ import { ColumnChart, BarList } from '../components/Charts';
 import type { Contractor, Defect, RepairUpdate } from '../lib/types';
 import { IconDownload } from '../lib/icons';
 import { useSeo } from '../lib/seo';
+import { errorMessage } from '../lib/utils';
 
 type Milestone = Pick<RepairUpdate, 'defect_id' | 'action' | 'created_at'>;
 const RANGES = [3, 6, 12] as const;
@@ -37,7 +38,7 @@ export function ReportsPage() {
   useEffect(() => {
     Promise.all([api.listDefects({}), api.listContractors(), api.listMilestones()])
       .then(([d, c, m]) => { setDefects(d); setContractors(c); setMilestones(m); })
-      .catch((err) => toast('error', 'Could not load reports', err.message || 'Please refresh.'))
+      .catch((err) => toast('error', 'Could not load reports', errorMessage(err, 'Please refresh.')))
       .finally(() => setLoaded(true));
   }, [toast]);
 

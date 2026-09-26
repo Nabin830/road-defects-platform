@@ -1,5 +1,5 @@
 import { HAS_SUPABASE, supabase } from './supabase';
-import { daysAgo, newDefectId, safePhotoUrl } from './utils';
+import { daysAgo, newDefectId, safePhotoUrl, errorMessage } from './utils';
 import { shrinkPhoto } from './image';
 import type {
   Defect, DBDefect, Contractor, Profile, RepairUpdate,
@@ -71,7 +71,7 @@ async function fetchAll<T>(page: (from: number, to: number) => PromiseLike<{ dat
   const out: T[] = [];
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await page(from, from + PAGE - 1);
-    if (error) throw error;
+    if (error) throw error instanceof Error ? error : new Error(errorMessage(error, 'Could not load data.'));
     out.push(...(data || []));
     if (!data || data.length < PAGE) return out;
   }
@@ -134,9 +134,9 @@ export const api = {
 
   async getProfile(userId: string): Promise<Profile | null> {
     if (!HAS_SUPABASE) return null;
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single<Profile>();
     if (error) return null;
-    return data as Profile;
+    return data;
   },
 
   /* ── defects ────────────────────────────────────────────────── */
@@ -173,9 +173,9 @@ export const api = {
       if (!r) throw new Error('Defect not found');
       return withDerived(r, myUserId);
     }
-    const { data, error } = await supabase.from('defects').select('*').eq('id', id).single();
+    const { data, error } = await supabase.from('defects').select('*').eq('id', id).single<DBDefect>();
     if (error) throw error;
-    return mapDefect(data as DBDefect, myUserId);
+    return mapDefect(data, myUserId);
   },
 
   async myReports(userId: string): Promise<Defect[]> {
@@ -231,14 +231,14 @@ export const api = {
       photo_url: input.photo_url ?? null,
       reported_by: userId,
     };
-    const { data, error } = await supabase.from('defects').insert(insert).select().single();
+    const { data, error } = await supabase.from('defects').insert(insert).select().single<DBDefect>();
     // Two reports generated the same ID in the same second — try once more with a fresh one
     if (error?.code === '23505' && attempt < 3) return this.createDefect(input, userId, attempt + 1);
     if (error) throw error;
     // The report is saved at this point — a failed timeline entry mustn't make it look like it failed
     await this.addUpdate(id, { action: 'Report submitted', note: 'Report captured with location and description.', progress: 0 }, userId, 'citizen')
       .catch(() => {});
-    return mapDefect(data as DBDefect, userId);
+    return mapDefect(data, userId);
   },
 
   async updateDefect(id: string, patch: Partial<DBDefect>): Promise<void> {
@@ -465,9 +465,9 @@ export const api = {
       DEMO_CONTRACTORS.push(c);
       return c;
     }
-    const { data, error } = await supabase.from('contractors').insert({ name, abbr }).select().single();
+    const { data, error } = await supabase.from('contractors').insert({ name, abbr }).select().single<Contractor>();
     if (error) throw error;
-    return data as Contractor;
+    return data;
   },
 
   /** Timeline entries used by the council reports (assignment and completion times). */
@@ -512,7 +512,7 @@ export const api = {
           { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
           (payload) => onNew(payload.new as AppNotification))
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { void supabase.removeChannel(channel); };
   },
 
   /* ── photo storage ──────────────────────────────────────────────── */
