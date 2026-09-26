@@ -68,8 +68,8 @@ src/
   assets/             Web-optimised logos and illustrations
   Logos/              Original brand artwork (not all used by the site)
 supabase/
-  00-all-in-one.sql   Wipes and builds the whole database (includes everything in 01–06)
-  01–06-*.sql         Upgrades for a database whose data you want to keep
+  00-all-in-one.sql   Wipes and builds the whole database (includes everything in 01–07)
+  01–07-*.sql         Upgrades for a database whose data you want to keep
   functions/geocode/  Optional Edge Function: cached address lookups
 scripts/seo-build.mjs Runs after the build: per-page meta, robots.txt, sitemap.xml
 docs/                 Setup, Supabase, deployment, troubleshooting

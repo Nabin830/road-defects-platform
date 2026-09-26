@@ -101,6 +101,7 @@ Editor, in order, skipping any you've already run. Each keeps your data:
 | `04-workflow-rules.sql` | Required photos, stage order, duplicate blocking |
 | `05-anti-tamper.sql` | Stops people bypassing the website to fake data (see below) |
 | `06-hardening.sql` | Text limits, fair backing, timeline flood limit, company edits, notification clean-up |
+| `07-search-path.sql` | Pins every function's `search_path` (clears Supabase's "Function Search Path Mutable" warning) |
 
 **Why 05 matters:** anyone can send requests straight to the database without using the website.
 05 makes the database enforce what each role may change: new reports always start clean and inside

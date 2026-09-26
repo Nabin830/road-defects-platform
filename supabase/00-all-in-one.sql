@@ -199,7 +199,7 @@ returns trigger as $$
 begin
   new.updated_at = now();
   return new;
-end $$ language plpgsql;
+end $$ language plpgsql set search_path = public;
 
 create trigger trg_profiles_touch before update on public.profiles
   for each row execute function public.touch_updated_at();
@@ -242,7 +242,7 @@ returns text as $$
     string_agg(left(w, 1), '' order by ord), ''), '?'))
     from (select w, ord from unnest(regexp_split_to_array(trim(p_name), '\s+')) with ordinality as t(w, ord)
            where w <> '' limit 2) x;
-$$ language sql immutable;
+$$ language sql immutable set search_path = public;
 
 -- Only 'citizen' or 'contractor' can be chosen at signup; admin is granted by SQL.
 -- Contractors automatically get their own row in public.contractors so the
@@ -305,7 +305,7 @@ returns boolean as $$
     select 1 from public.profiles
     where id = auth.uid() and role = 'admin'
   );
-$$ language sql stable security definer;
+$$ language sql stable security definer set search_path = public;
 
 create or replace function public.is_contractor()
 returns boolean as $$
@@ -313,12 +313,12 @@ returns boolean as $$
     select 1 from public.profiles
     where id = auth.uid() and role = 'contractor'
   );
-$$ language sql stable security definer;
+$$ language sql stable security definer set search_path = public;
 
 create or replace function public.my_contractor_id()
 returns uuid as $$
   select contractor_id from public.profiles where id = auth.uid();
-$$ language sql stable security definer;
+$$ language sql stable security definer set search_path = public;
 
 -- ─── Contractor declines an assigned job ──────────────────────────
 -- Sends the defect back to 'pending' (unassigned) so the council can
@@ -493,7 +493,7 @@ returns double precision as $$
   select 2 * 6371000 * asin(sqrt(
     power(sin(radians((lat2 - lat1)::float8) / 2), 2) +
     cos(radians(lat1::float8)) * cos(radians(lat2::float8)) * power(sin(radians((lng2 - lng1)::float8) / 2), 2)));
-$$ language sql immutable;
+$$ language sql immutable set search_path = public;
 
 -- Title/description rules + required photo. A trigger, not a CHECK constraint, so older
 -- rows can still be updated; only new reports and edited text are checked.
@@ -522,7 +522,7 @@ begin
     raise exception 'A photo of the defect is required.';
   end if;
   return new;
-end $$ language plpgsql;
+end $$ language plpgsql set search_path = public;
 
 drop trigger if exists trg_defects_check_text on public.defects;
 create trigger trg_defects_check_text before insert or update on public.defects
@@ -612,7 +612,7 @@ begin
     raise exception 'Contractors must attach a photo to % entries.', lower(new.action);
   end if;
   return new;
-end $$ language plpgsql;
+end $$ language plpgsql set search_path = public;
 
 drop trigger if exists trg_updates_require_photo on public.repair_updates;
 create trigger trg_updates_require_photo before insert on public.repair_updates
@@ -656,20 +656,20 @@ alter table public.geocode_cache enable row level security;
 create or replace function public.trusted()
 returns boolean as $$
   select coalesce(current_setting('roadfix.trusted', true), '') = 'on';
-$$ language sql stable;
+$$ language sql stable set search_path = public;
 
 -- Generous box around the Orange City Council area (matches the app's COUNCIL_AREA)
 create or replace function public.in_council_area(lat numeric, lng numeric)
 returns boolean as $$
   select lat between -33.48 and -33.12 and lng between 148.88 and 149.30;
-$$ language sql immutable;
+$$ language sql immutable set search_path = public;
 
 -- Columns whose value differs between two versions of a row (ignores updated_at)
 create or replace function public.changed_columns(a jsonb, b jsonb)
 returns text[] as $$
   select coalesce(array_agg(k), '{}') from jsonb_object_keys(a) k
    where k <> 'updated_at' and a -> k is distinct from b -> k;
-$$ language sql immutable;
+$$ language sql immutable set search_path = public;
 
 -- Profiles: people may change only their name, phone, suburb and avatar
 create or replace function public.guard_profile()
@@ -784,7 +784,7 @@ create trigger trg_updates_guard before insert on public.repair_updates
 create or replace function public.valid_photo_url(u text)
 returns boolean as $$
   select u is null or u ~ '^https://[^/?#]+/storage/v1/object/public/defect-photos/[^?#]+$';
-$$ language sql immutable;
+$$ language sql immutable set search_path = public;
 
 create or replace function public.check_photo_urls()
 returns trigger as $$
@@ -848,7 +848,7 @@ begin
     end if;
   end loop;
   return new;
-end $$ language plpgsql;
+end $$ language plpgsql set search_path = public;
 
 drop trigger if exists trg_defects_text_limits on public.defects;
 create trigger trg_defects_text_limits before insert or update on public.defects
