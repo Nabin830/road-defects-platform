@@ -81,11 +81,16 @@ if (!SITE) {
 } else {
   let reports = [];
   if (env.VITE_SUPABASE_URL && env.VITE_SUPABASE_ANON_KEY && !env.VITE_SUPABASE_URL.includes('YOUR_PROJECT_ID')) {
+    // Supabase returns at most 1,000 rows per request, so read page by page (sitemaps cap at 50,000 URLs)
     try {
-      const res = await fetch(`${env.VITE_SUPABASE_URL}/rest/v1/defects?select=id,updated_at&status=neq.rejected&order=updated_at.desc&limit=45000`,
-        { headers: { apikey: env.VITE_SUPABASE_ANON_KEY } });
-      if (res.ok) reports = await res.json();
-      else console.warn(`[seo] couldn't read reports for the sitemap (HTTP ${res.status})`);
+      for (let from = 0; from < 49000; from += 1000) {
+        const res = await fetch(`${env.VITE_SUPABASE_URL}/rest/v1/defects?select=id,updated_at&status=neq.rejected&order=updated_at.desc,id`,
+          { headers: { apikey: env.VITE_SUPABASE_ANON_KEY, Range: `${from}-${from + 999}`, 'Range-Unit': 'items' } });
+        if (!res.ok) { console.warn(`[seo] couldn't read reports for the sitemap (HTTP ${res.status})`); break; }
+        const page = await res.json();
+        reports.push(...page);
+        if (page.length < 1000) break;
+      }
     } catch (e) { console.warn('[seo] couldn\'t read reports for the sitemap:', e.message); }
   }
   const today = new Date().toISOString().slice(0, 10);

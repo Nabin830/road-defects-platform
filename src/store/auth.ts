@@ -15,7 +15,8 @@ interface AuthState {
   signUp: (email: string, password: string, name: string, role: Role) => Promise<void>;
   signOut: () => Promise<void>;
   /** Re-read the signed-in user's profile (role, contractor link) from the database. */
-  refreshProfile: () => Promise<void>;
+  /** `force` skips the once-a-minute limit (e.g. right after saving the profile). */
+  refreshProfile: (force?: boolean) => Promise<void>;
   setDemoRole: (r: Role) => void;
   setDemoAuthed: (b: boolean) => void;
   authed: boolean;
@@ -28,6 +29,8 @@ async function loadProfile(uid: string): Promise<Profile | null> {
   await new Promise(r => setTimeout(r, 800));
   return api.getProfile(uid);
 }
+
+let lastProfileCheck = 0;
 
 export const useAuth = create<AuthState>((set, get) => ({
   ready: false,
@@ -92,9 +95,12 @@ export const useAuth = create<AuthState>((set, get) => ({
     set({ userId: session.user.id, profile, role: profile?.role || role, authed: true });
   },
 
-  async refreshProfile() {
+  async refreshProfile(force = false) {
     const { userId, profile: current } = get();
     if (!HAS_SUPABASE || !userId) return;
+    // Picks up role changes made by council; once a minute is plenty (it used to run on every page change)
+    if (!force && Date.now() - lastProfileCheck < 60_000) return;
+    lastProfileCheck = Date.now();
     const profile = await api.getProfile(userId);
     if (!profile) return;
     if (profile.role !== current?.role || profile.contractor_id !== current?.contractor_id || profile.name !== current?.name) {

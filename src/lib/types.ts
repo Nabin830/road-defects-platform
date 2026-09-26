@@ -114,12 +114,6 @@ export interface PlatformStats {
 }
 
 // ─── Analytics shape ──────────────────────────────────────────────────
-export interface AdminStats {
-  total: number;
-  byStatus: Record<DefectStatus, number>;
-  bySeverity: Record<Severity, number>;
-  contractors: Contractor[];
-}
 
 // ─── Supabase row types (database shape, before mapping) ─────────────
 export interface DBDefect {

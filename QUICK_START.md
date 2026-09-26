@@ -1,41 +1,31 @@
-# Quick Start — 3 commands
+# Quick Start
 
 ```bash
 npm install
-npm run dev
+cp .env.example .env.local   # fill in VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY (and VITE_SITE_URL for production)
+npm run dev                  # http://localhost:5173
 ```
 
-`.env.local` is already set up with a live Supabase project — the app talks to a real Postgres
-backend from the first run, no demo/dummy data. (Delete `.env.local` if you ever want to fall back
-to offline demo mode for previewing UI without a backend.)
+Needs **Node 20+**.
 
-Open **http://localhost:5173**.
+## Set up the database (once)
+
+1. Supabase → **SQL Editor** → paste all of `supabase/00-all-in-one.sql` → **Run**.
+   It wipes the database and creates everything. No sample data; sign-in accounts are kept.
+2. Supabase → **Authentication → Providers → Email** → turn **Confirm email** OFF (RoadFix sends no emails).
+3. Council account: if `council@gmail.com` already existed when you ran the SQL, it's council now.
+   If you sign it up afterwards, run this once in the SQL Editor:
+   `update public.profiles set role = 'admin' where lower(email) = 'council@gmail.com';`
 
 ## Try each role
 
-Create real accounts at `/register` (citizen or contractor). The admin account is
-`council@gmail.com` — sign it up, then run `supabase/00-all-in-one.sql` to grant the admin role.
+- **Resident:** register at `/register`, then report a defect at `/report`.
+- **Contractor:** register choosing "I'm a contractor"; council assigns jobs to your company.
+- **Council:** sign in as `council@gmail.com` → `/admin`.
 
-## Finish the backend setup
+## Checks
 
-Run `supabase/00-all-in-one.sql` once in the Supabase SQL Editor — it wipes the old database and
-creates everything (tables, policies, followers, photo storage) with no dummy data. See
-`docs/02-SUPABASE.md` step 3.
+- `npm run typecheck` — strict TypeScript
+- `npm run build` — production build + SEO files (sitemap needs `VITE_SITE_URL`)
 
-## Verified
-
-- `npx tsc --noEmit` (strict mode) — zero TypeScript errors
-- `npm run build` (Vite production) — builds clean
-- Live REST check against the configured Supabase project (`defects`, `contractors`, `votes` all
-  respond with real rows; RLS correctly blocks anonymous reads of `profiles`)
-
-## Security posture
-
-- Row-level security enabled on every table (`profiles`, `contractors`, `defects`, `repair_updates`, `votes`, `followers`)
-- CHECK constraints on `severity`, `status`, `defect_type`
-- No secrets in bundle (the anon key is public-safe by design; RLS is the real boundary)
-- XSS-safe Leaflet popups (all user content goes through `escapeHtml`)
-- Icons use static `dangerouslySetInnerHTML` (never user input)
-- No `eval`, no `Function()`, no `innerHTML` on user data
-- CSRF-safe (all writes are same-origin fetch with Supabase JWT)
-- Photo uploads are scoped per-user by storage path (`{user_id}/...`) and size/type-limited server-side via bucket policy
+Security details and database rules: see `docs/02-SUPABASE.md`.

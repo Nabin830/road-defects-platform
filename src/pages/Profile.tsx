@@ -51,7 +51,7 @@ export function ProfilePage() {
         await api.renameCompany(company.id, companyName.trim());
         setCompany({ ...company, name: companyName.trim() });
       }
-      await refreshProfile();
+      await refreshProfile(true);
       toast('success', 'Profile saved', 'Your details have been updated.');
     } catch (err: any) {
       toast('error', 'Could not save', err.message || 'Please try again.');

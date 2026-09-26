@@ -1,154 +1,90 @@
 ![RoadFix](src/Logos/website-header.png)
 
-# RoadFix — React + TypeScript
+# RoadFix
 
-RoadFix is a civic infrastructure app for NSW councils. Residents report road defects, contractors fix them, admins triage.
+RoadFix lets residents of Orange, NSW report potholes and other road damage, and follow each repair from
+report to a council-verified fix. Council triages reports and hands them to contractors with a work order
+and fix-by date; contractors post progress with photos; council signs the repair off.
 
-Built for the Central West NSW pilot (Orange, Cabonne, Blayney, Cowra LGAs) as part of the Charles Darwin University PRT631 Information Systems Practicum.
-
-## Brand
-
-![RoadFix brand sheet](src/Logos/roadfix-all-in-one.png)
-
-All RoadFix artwork lives in `src/Logos/`:
-
-| File | Used for |
-| --- | --- |
-| `logo-transparent-black.png` / `logo-transparent-white.png` | Navbar, footer, sign-in/register (light / dark theme, via trimmed copies) |
-| `logo-light.png` / `logo-dark.png` | Home page call-to-action banner (light / dark theme); `logo-dark` is also the social share image |
-| `favicon.png` | Browser tab icon |
-| `app-icon-rounded.png` | iOS home-screen icon (`apple-touch-icon`) |
-| `app-icon-1024.png` / `social-avatar.png` | PWA manifest icons (standard / maskable) |
-| `sticker-lockup.png` / `sticker-icon.png` | Sign-in / register brand panel illustrations |
-| `vehicle-decal.png` | Contractor "My jobs" banner |
-| `website-header.png`, `roadfix-all-in-one.png` | This README |
-| <img src="src/Logos/wordmark-transparent.png" alt="RoadFix wordmark" height="40" /> `wordmark-transparent.png` | Text-only wordmark for print and light backgrounds |
-
-Files in `public/` (favicon, icons, `og-image.png`) are copies of the originals, since `index.html` and the manifest need fixed URLs.
-
-## Stack
-
-- **React 18** + **TypeScript 5** — strict typing throughout
-- **Vite 5** — fast dev server and build
-- **Tailwind CSS 3** — utility-first styling with CSS-var-based theming
-- **React Router 7** — single-page app with normal (search-engine friendly) URLs
-- **Zustand 4** — tiny state store for auth + UI
-- **Supabase JS 2** — Postgres backend with auth and row-level security
-- **Leaflet + React-Leaflet** — OpenStreetMap tiles, custom pins
+Built for the Central West NSW pilot as part of the Charles Darwin University PRT631 Information Systems
+Practicum.
 
 ## Quick start
 
 ```bash
 npm install
-npm run dev
+cp .env.example .env.local     # then fill in your Supabase URL and anon key
+npm run dev                    # http://localhost:5173
 ```
 
-Open http://localhost:5173. `.env.local` already points at a live Supabase project, so this is a
-real backend from the first run — no in-memory dummy data. (An offline demo-data fallback still
-exists in `src/lib/api.ts` and activates automatically if `.env.local` is removed or unset, purely
-so the UI can be previewed without a backend — it never runs while Supabase is configured.)
+Requires **Node 20+**. Then set up the database: run `supabase/00-all-in-one.sql` once in the Supabase
+SQL Editor and turn **Confirm email** off (details in [`docs/02-SUPABASE.md`](docs/02-SUPABASE.md)).
 
-## Accounts
+Without Supabase credentials the app runs in an offline **demo mode** (empty, in-memory data) so the UI can
+be previewed; it never runs while Supabase is configured.
 
-Register a real account at `/register` (citizen or contractor). The admin account is
-`council@gmail.com` — sign it up, then run `supabase/00-all-in-one.sql` to grant the admin role.
+## Who can do what
 
-Admin accounts and contractor↔company links are granted via a one-line SQL update by an existing
-admin, not via self-registration — see `docs/02-SUPABASE.md`.
+| Role | Can |
+| --- | --- |
+| Visitor | Browse the public map, every report and its repair timeline |
+| Resident | Report a defect (location, details, required photo), back and follow reports, get in-app notifications |
+| Contractor | Accept or decline jobs, post progress with photos, mark jobs complete (photo required) |
+| Council | Triage and re-grade reports, assign contractors with a work order and fix-by date, verify or send back repairs, reject reports, manage people and companies, view reports and export CSV |
 
-The whole database is set up by one file, run once in the Supabase SQL Editor:
-`supabase/00-all-in-one.sql` (wipes old data, creates everything, no dummy data).
+Council accounts are granted in the database, never by sign-up. `council@gmail.com` becomes council when
+`00-all-in-one.sql` runs, if the account already exists (otherwise see `QUICK_START.md` step 3). RoadFix sends **no emails** — all updates appear in the app.
+
+## Rules the database enforces
+
+Every rule is enforced in Postgres (row-level security + triggers), not just in the browser:
+
+- Stage order: pending → assigned → in progress → completed → verified (no skipping)
+- Required photos on reports, progress updates and completion; photo links must point at the RoadFix bucket
+- Spam limits (1 report a minute, 10 a day), no new report within 150 m of an open one from the last hour,
+  reports only inside the Orange council area, text length limits
+- Each role can only change what the app lets it change (no fake votes, severities, dates or council entries)
+- Fix-by targets: critical 1 day, high 3–5 days, medium 7, low 10 (or council's own date when assigning)
+
+## Stack
+
+React 18 + TypeScript · Vite 5 · Tailwind CSS 3 · React Router 7 · Zustand · Supabase (Postgres, auth,
+storage) · Leaflet + OpenStreetMap
 
 ## Project structure
 
 ```
-roadfix/
-├─ src/
-│  ├─ main.tsx              React entry, mounts App, inits stores
-│  ├─ App.tsx               Router — all routes with role guards
-│  ├─ index.css             Design tokens + Tailwind + component classes
-│  ├─ lib/
-│  │   ├─ types.ts          Every shared type (Defect, Profile, Role, …)
-│  │   ├─ constants.ts      STATUS, SEVERITY, TYPES, ORANGE (lat/lng)
-│  │   ├─ utils.ts          relativeTime, daysAgo, initialsOf, newDefectId
-│  │   ├─ icons.tsx         Lucide-style SVG icon set
-│  │   ├─ supabase.ts       Typed client + HAS_SUPABASE detection
-│  │   └─ api.ts            Data layer — Supabase queries + demo fallback
-│  ├─ store/
-│  │   ├─ auth.ts           Zustand — session, profile, role, demo mode
-│  │   └─ ui.ts             Zustand — theme, toasts, modal host
-│  ├─ components/
-│  │   ├─ Layout.tsx        Navbar + TabBar + Footer
-│  │   ├─ DefectMap.tsx     Leaflet map with severity-colored pins
-│  │   ├─ DefectCard.tsx    Card with photo, status, severity, progress
-│  │   ├─ Timeline.tsx      Repair-progress timeline
-│  │   ├─ StatCard.tsx      Number-with-label card
-│  │   ├─ Badge.tsx         StatusBadge
-│  │   ├─ Severity.tsx      SeverityChip (with critical pulse)
-│  │   ├─ Placeholder.tsx   Dashed image placeholder
-│  │   ├─ Toast.tsx         Toast host (4 kinds: success/error/warning/info)
-│  │   ├─ Modal.tsx         Modal host (assign/reject dialogs)
-│  │   └─ ProtectedRoute.tsx  Guards routes by role
-│  └─ pages/
-│      ├─ Home.tsx          Landing — hero, stats, how-it-works, recent
-│      ├─ Login.tsx         Split-screen login
-│      ├─ Register.tsx      Role selector + create account
-│      ├─ Dashboard.tsx     Citizen dashboard
-│      ├─ Report.tsx        3-step report form (location → details → photo)
-│      ├─ Defects.tsx       All defects — filters + map/grid/table views
-│      ├─ DefectDetail.tsx  Full defect view — actions by role
-│      ├─ MyReports.tsx     Citizen — my own reports
-│      ├─ Contractor.tsx    Contractor kanban (assigned/progress/completed)
-│      └─ Admin.tsx         Council dashboard — charts, contractors, triage
-├─ supabase/
-│  └─ 00-all-in-one.sql     Wipe + full schema, RLS, followers, storage (no seed data)
-├─ docs/                    Setup, Supabase, deployment, troubleshooting
-├─ package.json
-├─ vite.config.ts
-├─ tailwind.config.ts
-├─ tsconfig.json
-├─ .env.example
-└─ .gitignore
+src/
+  main.tsx            Entry: fonts, theme, auth init, router
+  App.tsx             Routes (pages load on demand) + role guards
+  index.css           Design tokens (light/dark), component classes
+  lib/                api (data layer + demo fallback), supabase client, types, constants,
+                      sla (deadlines), geocode (address lookup), image (photo shrinking), seo, utils, icons
+  store/              auth, ui (theme/toasts/dialogs), notifications
+  components/         Layout, maps (DefectMap → LeafletMap, MapThumb), DefectCard, Timeline, Photo,
+                      PhotoField, Modal, Toast, ErrorBoundary, Charts, badges
+  pages/              Home, Defects, DefectDetail, Report, Dashboard, MyReports, Contractor,
+                      Admin, Reports, People, Profile, Login, Register, Legal (privacy/terms)
+  assets/             Web-optimised logos and illustrations
+  Logos/              Original brand artwork (not all used by the site)
+supabase/
+  00-all-in-one.sql   Wipes and builds the whole database (includes everything in 01–06)
+  01–06-*.sql         Upgrades for a database whose data you want to keep
+  functions/geocode/  Optional Edge Function: cached address lookups
+scripts/seo-build.mjs Runs after the build: per-page meta, robots.txt, sitemap.xml
+docs/                 Setup, Supabase, deployment, troubleshooting
 ```
 
-## User flows
+## Design
 
-### Citizen
-1. `/` → `/register` (role = citizen)
-2. `/dashboard` shows their stat cards + recent reports + neighbourhood map
-3. `/report` — pick location on the map → choose type/severity/title → attach photos → submit
-4. `/my-reports` shows all their submissions with filter tabs
-5. `/defect/:id` shows full details; the **Follow updates** and **Back this report** buttons are visible
-
-### Contractor
-1. `/login` (email starting with `contractor@` in demo mode)
-2. `/contractor` shows a kanban with three columns: Assigned / In progress / Completed
-3. Click a card → `/defect/:id`
-4. **Mark in progress** and **Mark complete** buttons write to the repair timeline
-
-### Admin
-1. `/login` (email starting with `admin@`)
-2. `/admin` shows the program overview: stat cards, status bar chart, severity breakdown, contractor performance table, live map, pending triage list
-3. Click a pending defect → `/defect/:id`
-4. **Assign contractor** opens a modal with the panel
-5. **Reject report** opens a modal with reason chips + free text
-
-## Design tokens
-
-All theming is driven by CSS custom properties in `src/index.css`:
-
-- **Brand**: `#1E40AF` blue
-- **Success (em)**: `#059669` green (completed repairs)
-- **Warning (am)**: `#F59E0B` amber (assigned, in progress)
-- **Danger (rd)**: `#DC2626` red (critical, rejected)
-- **Purple (pu)**: `#7C3AED` (contractor accents)
-
-Both **light** and **dark** themes are supported via the toggle in the navbar. Preference persists in `localStorage`.
+The palette comes from the logo: light cone-orange (`#FB9A4B`) for actions with charcoal text on top, a
+deeper orange (`#B34D0C`) for links, and a warm off-white background (`#FAF8F4`). Status colours: amber
+(pending), blue (assigned), purple (in progress), green (completed), red (rejected / critical). Light and dark
+themes follow the navbar toggle. Text colours meet WCAG AA contrast.
 
 ## Author
 
-**Nabin Pandey** — PRT631 Information Systems Practicum
-Charles Darwin University · 2026
+**Nabin Pandey** — PRT631 Information Systems Practicum, Charles Darwin University · 2026
 
 ## License
 

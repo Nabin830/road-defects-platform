@@ -10,12 +10,10 @@ export interface Toast {
 
 interface UIState {
   theme: 'light' | 'dark';
-  sim: 'desktop' | 'mobile';
   toasts: Toast[];
   modal: React.ReactNode | null;
   toggleTheme: () => void;
   setTheme: (t: 'light' | 'dark') => void;
-  setSim: (s: 'desktop' | 'mobile') => void;
   toast: (kind: ToastKind, title: string, message?: string) => void;
   dismissToast: (id: number) => void;
   openModal: (node: React.ReactNode) => void;
@@ -34,7 +32,6 @@ function savedTheme(): 'light' | 'dark' {
 
 export const useUI = create<UIState>((set, get) => ({
   theme: savedTheme(),
-  sim: 'desktop',
   toasts: [],
   modal: null,
 
@@ -43,10 +40,6 @@ export const useUI = create<UIState>((set, get) => ({
     document.documentElement.setAttribute('data-theme', t);
     try { localStorage.setItem('roadfix-theme', t); localStorage.removeItem('rdap-theme'); } catch {}
     set({ theme: t });
-  },
-  setSim(s) {
-    document.body.classList.toggle('mobile-sim', s === 'mobile');
-    set({ sim: s });
   },
   toast(kind, title, message) {
     // The same message twice in a row (double click, retried load) shows once

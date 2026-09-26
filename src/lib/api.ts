@@ -3,7 +3,7 @@ import { daysAgo, newDefectId, safePhotoUrl } from './utils';
 import { shrinkPhoto } from './image';
 import type {
   Defect, DBDefect, Contractor, Profile, RepairUpdate,
-  DefectFilters, SignUpInput, SignInInput, CreateDefectInput, AdminStats,
+  DefectFilters, SignUpInput, SignInInput, CreateDefectInput,
   AppNotification, NotificationKind, Severity,
 } from './types';
 
@@ -88,7 +88,8 @@ export const api = {
     const { data, error } = await supabase.auth.signUp({
       email: input.email,
       password: input.password,
-      options: { data: { name: input.name, role: input.role || 'citizen', suburb: input.suburb || '' } },
+      // Leave suburb out when empty, so the profile stores "no suburb" rather than a blank string
+      options: { data: { name: input.name, role: input.role || 'citizen', ...(input.suburb?.trim() ? { suburb: input.suburb.trim() } : {}) } },
     });
     if (error) throw error;
     return data;
@@ -376,22 +377,7 @@ export const api = {
   },
 
   /* ── analytics ──────────────────────────────────────────────── */
-  async adminStats(): Promise<AdminStats> {
-    const [defects, contractors] = await Promise.all([this.listDefects({}), this.listContractors()]);
-    const byStatus: AdminStats['byStatus'] = { pending: 0, assigned: 0, progress: 0, completed: 0, rejected: 0 };
-    const bySeverity: AdminStats['bySeverity'] = { low: 0, medium: 0, high: 0, critical: 0 };
-    for (const d of defects) {
-      byStatus[d.status]++;
-      bySeverity[d.severity]++;
-    }
-    return { total: defects.length, byStatus, bySeverity, contractors };
-  },
-
-  /** Real, publicly-derivable platform stats for the homepage (no fabricated numbers). */
-  async platformStats(): Promise<import('./types').PlatformStats> {
-    return this.statsFrom(await this.listDefects({}));
-  },
-
+  /** Public homepage figures, worked out from the defects already loaded (no fabricated numbers). */
   statsFrom(defects: Defect[]): import('./types').PlatformStats {
     const totalReported = defects.length;
     const totalCompleted = defects.filter(d => d.status === 'completed' && d.verified_at).length;

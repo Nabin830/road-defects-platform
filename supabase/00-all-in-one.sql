@@ -87,8 +87,6 @@ begin
   end loop;
 end $$;
 
--- Delete the old demo login accounts (citizen@/contractor@/admin@example.com)
-delete from auth.users where lower(email) like '%@example.com';
 
 -- Optional: also delete every user account (Authentication → Users).
 -- Uncomment ONLY if you want all users gone and plan to sign up again.

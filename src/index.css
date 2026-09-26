@@ -97,7 +97,6 @@
   .menu-item {
     @apply flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13.5px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink text-left;
   }
-  .card-pad     { @apply p-5; }
   .card-hover   { @apply transition-all hover:-translate-y-0.5 hover:shadow-lg hover:border-border-strong; }
   .card-head    { @apply px-5 py-[15px] border-b border-border flex items-center gap-3; }
   .card-body    { @apply p-5; }
@@ -111,7 +110,6 @@
   .b-progress   { @apply bg-pu-50 text-pu-700 border-pu-600/25; }
   .b-completed  { @apply bg-em-50 text-em-700 border-em-600/25; }
   .b-rejected   { @apply bg-rd-50 text-rd-700 border-rd-600/25; }
-  .b-neutral    { @apply bg-surface-2 text-muted border-border; }
 
   .chip         { @apply inline-flex items-center gap-[7px] h-[34px] px-3.5 rounded-pill border border-border bg-surface text-ink-2 text-[13px] font-semibold cursor-pointer hover:border-border-strong; }
   .chip[aria-pressed="true"] { @apply bg-brand border-brand text-brand-ink; }
@@ -132,22 +130,6 @@
   .err   { @apply text-xs text-rd-600 font-medium flex items-center gap-1; }
   .ok    { @apply text-xs text-em-600 font-medium flex items-center gap-1; }
 
-  .ph {
-    position: relative;
-    display: grid;
-    place-items: center;
-    overflow: hidden;
-    background: var(--surface-2);
-    background-image: repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 11%, transparent) 0 1px, transparent 1px 9px);
-    border: 1px dashed var(--border-strong);
-    color: var(--muted);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10.5px;
-    letter-spacing: .06em;
-    text-transform: uppercase;
-    text-align: center;
-  }
-  .ph span { padding: 4px 9px; background: var(--surface); border-radius: 4px; border: 1px solid var(--border); }
 
   .prog   { @apply h-[7px] rounded-pill bg-border overflow-hidden; }
   .prog i { @apply block h-full rounded-pill bg-brand transition-[width] duration-700; }
