@@ -9,11 +9,13 @@ and fix-by date; contractors post progress with photos; council signs the repair
 Built for the Central West NSW pilot as part of the Charles Darwin University PRT631 Information Systems
 Practicum.
 
+**Everything that's been built, and how it was tested: [`docs/05-WHAT-WE-BUILT.md`](docs/05-WHAT-WE-BUILT.md).**
+
 ## Quick start
 
 ```bash
 npm install
-cp .env.example .env.local     # then fill in your Supabase URL and anon key
+# create .env.local with VITE_SUPABASE_URL=... and VITE_SUPABASE_ANON_KEY=... (see docs/01-SETUP.md)
 npm run dev                    # http://localhost:5173
 ```
 
@@ -28,7 +30,7 @@ be previewed; it never runs while Supabase is configured.
 | Role | Can |
 | --- | --- |
 | Visitor | Browse the public map, every report and its repair timeline |
-| Resident | Report a defect (location, details, required photo), back and follow reports, get in-app notifications |
+| Resident | Report a defect (location, details, required photo — also offline), back and follow reports, in-app and phone notifications, say "not fixed" after a repair |
 | Contractor | Accept or decline jobs, post progress with photos, mark jobs complete (photo required) |
 | Council | Triage and re-grade reports, assign contractors with a work order and fix-by date, verify or send back repairs, reject reports, manage people and companies, view reports and export CSV |
 
@@ -46,7 +48,7 @@ Every rule is enforced in Postgres (row-level security + triggers), not just in 
   3 days of the photo, never dated before the account existed, always flagged "offline" for council — and all
   the other rules still apply when it's sent
 - Spam limits (1 report a minute, 10 a day), no new report within 150 m of an open one from the last hour,
-  reports only inside the Orange council area, text length limits
+  reports only inside the service area (all of Australia for now; Orange only is one setting away), text length limits
 - Each role can only change what the app lets it change (no fake votes, severities, dates or council entries)
 - Fix-by targets: critical 1 day, high 3–5 days, medium 7, low 10 (or council's own date when assigning)
 - "Not fixed" reopen requests: only by the reporter or a backer, within 7 days of verification, with their own
@@ -76,7 +78,8 @@ src/
   App.tsx             Routes (pages load on demand) + role guards
   index.css           Design tokens (light/dark), component classes
   lib/                api (data layer + demo fallback), supabase client, types, constants,
-                      sla (deadlines), geocode (address lookup), image (photo shrinking), seo, utils, icons
+                      sla (deadlines), geocode (address lookup), image (photo shrinking), seo, utils, icons,
+                      evidence (photo checks), outbox (offline), push (notifications), priority, cache
   store/              auth, ui (theme/toasts/dialogs), notifications
   components/         Layout, maps (DefectMap → LeafletMap, MapThumb), DefectCard, Timeline, Photo,
                       PhotoField, Modal, Toast, ErrorBoundary, Charts, badges
@@ -88,8 +91,9 @@ supabase/
   Database.sql        Wipes and builds the whole database
   Council-Account.sql Re-creates the council@gmail.com admin with a new password
   functions/geocode/  Optional Edge Function: cached address lookups
+  functions/push/     Edge Function: sends phone notifications
 scripts/seo-build.mjs Runs after the build: per-page meta, robots.txt, sitemap.xml
-docs/                 Setup, Supabase, deployment, troubleshooting
+docs/                 Setup, Supabase, deployment, troubleshooting, what we built
 ```
 
 ## Design

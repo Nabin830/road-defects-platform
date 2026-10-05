@@ -10,13 +10,13 @@
 # 1. Install dependencies
 npm install
 
-# 2. Copy the env template
-cp .env.example .env.local
-
-# 3. (Optional) edit .env.local with your Supabase credentials
+# 2. (Optional) create .env.local with your Supabase details:
+#      VITE_SUPABASE_URL=https://<your project>.supabase.co
+#      VITE_SUPABASE_ANON_KEY=<anon key from Supabase → Project Settings → API>
+#    Optional extras: VITE_SITE_URL, VITE_TURNSTILE_SITE_KEY, VITE_VAPID_PUBLIC_KEY (see 02-SUPABASE.md)
 #    If you skip this step the app runs in DEMO MODE with in-memory data.
 
-# 4. Start the dev server
+# 3. Start the dev server
 npm run dev
 ```
 
