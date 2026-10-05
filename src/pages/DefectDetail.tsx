@@ -16,6 +16,11 @@ import { slaStatus, dueDate, DEFAULT_FIX_DAYS } from '../lib/sla';
 import { SlaChip } from '../components/SlaChip';
 import type { Defect, RepairUpdate, Contractor, Severity as Sev } from '../lib/types';
 import { useSeo } from '../lib/seo';
+import type { PhotoEvidence, PhotoPlace } from '../lib/evidence';
+import { PhotoChecks } from '../components/PhotoChecks';
+
+const photoPlace = (d: Defect | null): PhotoPlace | null =>
+  d ? { lat: d.latitude, lng: d.longitude, label: d.road, ref: d.id } : null;
 
 export function DefectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -151,10 +156,10 @@ export function DefectDetailPage() {
   }
 
   function markComplete() {
-    openModal(<CompleteModal onCancel={closeModal} onSubmit={(note, photo) => run(async () => {
+    openModal(<CompleteModal place={photoPlace(defect)} onCancel={closeModal} onSubmit={(note, photo) => run(async () => {
       if (!defect) return;
-      const photo_url = await api.uploadPhoto(photo, userId!);
-      await api.completeJob(defect.id, note, photo_url, userId!);
+      const photo_url = await api.uploadPhoto(photo.file, userId!);
+      await api.completeJob(defect.id, note, photo_url, photo.meta, userId!);
       await refresh();
       closeModal();
       toast('success', 'Marked complete', 'Sent to council for verification.');
@@ -219,10 +224,10 @@ export function DefectDetailPage() {
   }
 
   function openAddUpdate() {
-    openModal(<AddUpdateModal onSubmit={(note, progress, photo) => run(async () => {
+    openModal(<AddUpdateModal place={photoPlace(defect)} onSubmit={(note, progress, photo) => run(async () => {
       if (!defect) return;
-      const photo_url = await api.uploadPhoto(photo, userId!);
-      await api.addUpdate(defect.id, { action: 'Progress update', note, progress, photo_url }, userId!, 'contractor');
+      const photo_url = await api.uploadPhoto(photo.file, userId!);
+      await api.addUpdate(defect.id, { action: 'Progress update', note, progress, photo_url, photo: photo.meta }, userId!, 'contractor');
       await refresh();
       closeModal();
       toast('success', 'Update published', 'Progress note added to the timeline.');
@@ -241,6 +246,7 @@ export function DefectDetailPage() {
                      onClick={() => window.open(defect.photo_url!, '_blank', 'noopener')} />
             )}
             <div className="p-6">
+              {role === 'admin' && defect.photo_url && <div className="mb-4"><PhotoChecks info={defect} /></div>}
               <div className="flex flex-wrap items-center gap-2 mb-3">
                 <StatusBadge status={defect.status} verified={!!defect.verified_at} />
                 <SeverityChip level={defect.severity} />
@@ -316,7 +322,7 @@ export function DefectDetailPage() {
                   <div className={`prog ${defect.status === 'completed' ? 'em' : ''}`}><i style={{ width: `${defect.progress}%` }} /></div>
                 </div>
               )}
-              <Timeline updates={updates} />
+              <Timeline updates={updates} showPhotoChecks={role === 'admin'} />
             </div>
           )}
 
@@ -531,10 +537,10 @@ function AssignModal({ contractors, severity, initialInstructions, onPick, onCan
   );
 }
 
-function AddUpdateModal({ onSubmit, onCancel, currentProgress }: { onSubmit: (note: string, progress: number, photo: File) => Promise<void> | void; onCancel: () => void; currentProgress: number }) {
+function AddUpdateModal({ onSubmit, onCancel, currentProgress, place }: { onSubmit: (note: string, progress: number, photo: PhotoEvidence) => Promise<void> | void; onCancel: () => void; currentProgress: number; place: PhotoPlace | null }) {
   const [note, setNote] = useState('');
   const [progress, setProgress] = useState(Math.min(currentProgress, 95));
-  const [photo, setPhoto] = useState<File | null>(null);
+  const [photo, setPhoto] = useState<PhotoEvidence | null>(null);
   const [busy, setBusy] = useState(false);
   return (
     <>
@@ -553,7 +559,7 @@ function AddUpdateModal({ onSubmit, onCancel, currentProgress }: { onSubmit: (no
           <input id="upd-prog" type="range" min={0} max={95} step={5} value={Math.min(progress, 95)}
                  onChange={(e) => setProgress(Number(e.target.value))} className="w-full accent-brand" />
         </div>
-        <PhotoField onChange={setPhoto} label="Site photo (required)" />
+        <PhotoField value={photo} onChange={setPhoto} place={place} label="Take site photo (required)" />
       </div>
       <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
         <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
@@ -638,16 +644,16 @@ function ReworkModal({ onSubmit, onCancel }: { onSubmit: (note: string) => Promi
   );
 }
 
-function CompleteModal({ onSubmit, onCancel }: { onSubmit: (note: string, photo: File) => Promise<void> | void; onCancel: () => void }) {
+function CompleteModal({ onSubmit, onCancel, place }: { onSubmit: (note: string, photo: PhotoEvidence) => Promise<void> | void; onCancel: () => void; place: PhotoPlace | null }) {
   const [note, setNote] = useState('');
-  const [photo, setPhoto] = useState<File | null>(null);
+  const [photo, setPhoto] = useState<PhotoEvidence | null>(null);
   const [busy, setBusy] = useState(false);
   return (
     <>
       <header className="p-5 pb-0"><h3>Mark repair complete</h3></header>
       <div className="p-4 px-5 pt-3 space-y-4">
         <p className="text-[13.5px] text-muted">Council will check the work before closing the job. A photo of the finished repair is required.</p>
-        <PhotoField onChange={setPhoto} label="Photo of the finished repair (required)" />
+        <PhotoField value={photo} onChange={setPhoto} place={place} label="Take photo of the finished repair (required)" />
         <div className="grid gap-1.5">
           <label className="label" htmlFor="done-note">Notes for council (optional)</label>
           <textarea id="done-note" className="textarea !min-h-[80px]" maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)}

@@ -1,26 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
-import { photoProblem } from '../lib/image';
 import { reverseGeocode, searchAddress, type PlaceResult } from '../lib/geocode';
 import { useAuth } from '../store/auth';
 import { useUI } from '../store/ui';
 import { DefectMap } from '../components/DefectMap';
 import { TYPES, SEVERITY, inCouncilArea } from '../lib/constants';
-import { IconSearch, IconCrosshair, IconLeft, IconRight, IconUpload, IconCheck, IconAlert, IconX } from '../lib/icons';
+import { IconSearch, IconCrosshair, IconLeft, IconRight, IconCheck, IconAlert, IconLock } from '../lib/icons';
 import type { Defect, DefectType, Severity } from '../lib/types';
 import { SeverityChip } from '../components/Severity';
 import { StatusBadge } from '../components/Badge';
 import { useSeo } from '../lib/seo';
-import { errorMessage } from '../lib/utils';
+import { errorMessage, metres } from '../lib/utils';
+import { PhotoField } from '../components/PhotoField';
+import { isMobileDevice, MAX_GPS_ACCURACY_M, MAX_PHOTO_DISTANCE_M, type PhotoEvidence } from '../lib/evidence';
 
-/** Distance in metres between two lat/lng points. */
-function metres(aLat: number, aLng: number, bLat: number, bLng: number) {
-  const R = 6371000, r = Math.PI / 180;
-  const dLat = (bLat - aLat) * r, dLng = (bLng - aLng) * r;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * r) * Math.cos(bLat * r) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
 const NEARBY_M = 150;
 
 // Must match the database (check_report_text in supabase/00-all-in-one.sql), which enforces the same limits
@@ -59,10 +53,10 @@ export function ReportPage() {
   const [sev, setSev] = useState<Severity | ''>('');
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<PhotoEvidence | null>(null);
   const [busy, setBusy] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Phones: location comes from GPS only and the photo from the live camera, so neither can be faked by hand
+  const mobile = useMemo(isMobileDevice, []);
   const [existing, setExisting] = useState<Defect[]>([]);
 
   useEffect(() => { api.listDefects({}).then(setExisting).catch(() => {}); }, []);
@@ -90,7 +84,10 @@ export function ReportPage() {
     const t = setTimeout(() => {
       setLookingUp(true);
       reverseGeocode(lat, lng, ctrl.signal)
-        .then(addr => { if (addr && (placeAuto.current || !place.trim())) { setPlace(addr); placeAuto.current = true; } })
+        .then(addr => {
+          if (mobile) setPlace(addr || `Near ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+          else if (addr && (placeAuto.current || !place.trim())) { setPlace(addr); placeAuto.current = true; }
+        })
         .catch(() => {})
         .finally(() => { if (!ctrl.signal.aborted) setLookingUp(false); });
     }, 500);
@@ -119,7 +116,7 @@ export function ReportPage() {
   }
 
   // Warn before a refresh or tab close throws away a half-filled report
-  const dirty = !busy && (lat != null || !!title.trim() || !!desc.trim() || !!photoFile);
+  const dirty = !busy && (lat != null || !!title.trim() || !!desc.trim() || !!photo);
   useEffect(() => {
     if (!dirty) return;
     const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
@@ -129,12 +126,32 @@ export function ReportPage() {
 
   useEffect(() => () => { if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current); }, []);
 
+  // Phones start finding the location straight away — it's the only way to set it
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (mobile) locateMe(); }, []);
+
+  // A photo belongs to the spot it was taken for — moving the pin means taking it again
+  const pinKey = lat == null || lng == null ? '' : `${lat},${lng}`;
+  const photoPin = useRef(pinKey);
+  useEffect(() => { if (photoPin.current !== pinKey) { photoPin.current = pinKey; setPhoto(null); } }, [pinKey]);
+
+  /** Refuses a camera photo taken too far from the reported spot. */
+  function photoTooFar(p: PhotoEvidence): string | null {
+    if (p.meta.photo_source !== 'camera' || lat == null || lng == null) return null;
+    if (p.meta.photo_lat == null || p.meta.photo_lng == null) {
+      return mobile ? 'The photo has no GPS location. Allow location and take it again.' : null;
+    }
+    const m = Math.round(metres(lat, lng, p.meta.photo_lat, p.meta.photo_lng));
+    if (m <= MAX_PHOTO_DISTANCE_M) return null;
+    return `This photo was taken ${m} m from the reported spot. Take it at the defect (within ${MAX_PHOTO_DISTANCE_M} m).`;
+  }
+
   function pickSpot(la: number, ln: number) {
     setLat(la); setLng(ln); setAccuracy(null);
   }
 
   /** Watches GPS for a few seconds and keeps the most accurate fix — the first reading is often off by hundreds of metres. */
-  function useMyLocation() {
+  function locateMe() {
     if (!('geolocation' in navigator)) {
       return toast('error', 'Location unavailable', 'Your browser does not support geolocation.');
     }
@@ -149,7 +166,10 @@ export function ReportPage() {
       setLocating(false);
       if (!best) return;
       const acc = Math.round(best.accuracy);
-      if (acc > 100) toast('warning', 'Location is approximate', `Only accurate to about ${acc} m. Drag the pin or tap the map on the exact spot.`);
+      if (mobile) {
+        if (acc > MAX_GPS_ACCURACY_M) toast('warning', 'GPS signal too weak', `Only accurate to about ${acc} m. Move into the open and tap "Refresh GPS location".`);
+        else toast('success', 'Location found', `Accurate to about ${acc} m.`);
+      } else if (acc > 100) toast('warning', 'Location is approximate', `Only accurate to about ${acc} m. Drag the pin or tap the map on the exact spot.`);
       else toast('success', 'Location found', `Accurate to about ${acc} m. Drag the pin if it's not quite right.`);
     };
     const timer = setTimeout(finish, 12000);
@@ -168,35 +188,24 @@ export function ReportPage() {
         clearTimeout(timer);
         setLocating(false);
         toast('error', 'Could not get location', err.code === err.PERMISSION_DENIED
-          ? 'Location permission is blocked. Allow it in your browser settings, or tap the map instead.'
+          ? `Location permission is blocked. Allow it in your browser settings${mobile ? ' — it is needed to report from a phone.' : ', or tap the map instead.'}`
           : errorMessage(err, 'Check location permissions and try again.'));
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 },
     );
   }
 
-  function pickPhoto(file: File | undefined | null) {
-    if (!file) return;
-    const problem = photoProblem(file);
-    if (problem) return toast('warning', "Can't use that photo", problem);
-    if (photoPreview) URL.revokeObjectURL(photoPreview);
-    setPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
-  }
-
-  function clearPhoto() {
-    if (photoPreview) URL.revokeObjectURL(photoPreview);
-    setPhotoFile(null);
-    setPhotoPreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  }
-
   const titleOk = looksReal(title, TITLE_MIN) && title.trim().length <= TITLE_MAX;
   const descOk = looksReal(desc, DESC_MIN) && desc.trim().length <= DESC_MAX;
 
   function next() {
-    if (step === 1 && (lat == null || lng == null)) return toast('warning', 'Pick a location', 'Tap on the map or use "Use my location".');
-    if (step === 1 && !inCouncilArea(lat!, lng!)) return toast('warning', 'Outside the council area', 'RoadFix only covers roads in the Orange City Council area. Move the pin, or contact the council that looks after that road.');
+    if (step === 1 && (lat == null || lng == null)) {
+      return toast('warning', mobile ? 'Waiting for GPS' : 'Pick a location', mobile ? 'Tap "Use my location" and allow location access.' : 'Tap on the map or use "Use my location".');
+    }
+    if (step === 1 && mobile && (accuracy == null || accuracy > MAX_GPS_ACCURACY_M)) {
+      return toast('warning', 'GPS signal too weak', `Your location is only accurate to ${accuracy == null ? '?' : Math.round(accuracy)} m. Move into the open and tap "Use my location" again.`);
+    }
+    if (step === 1 && !inCouncilArea(lat!, lng!)) return toast('warning', 'Outside the service area', 'RoadFix only covers roads in Australia. Move the pin to a road in Australia.');
     if (step === 1 && blocking) return toast('warning', 'Already reported', `${blocking.d.id} was reported ${Math.round(blocking.m)} m away in the last hour. Open it and tap "Back this report" instead.`);
     if (step === 1 && !place.trim()) return toast('warning', 'Add the road name', 'Tell the crew which road or landmark it is near.');
     if (step === 2 && (!type || !sev)) return toast('warning', 'Missing details', 'Choose a type and severity.');
@@ -209,15 +218,18 @@ export function ReportPage() {
     if (lat == null || lng == null || !type || !sev || !titleOk || !descOk) {
       return toast('warning', 'Fill in required fields', 'Something is missing.');
     }
-    if (!inCouncilArea(lat, lng)) return toast('warning', 'Outside the council area', 'Move the pin to a road in the Orange City Council area.');
-    if (!photoFile) return toast('warning', 'Add a photo', 'A photo of the defect is required so council can assess it.');
+    if (!inCouncilArea(lat, lng)) return toast('warning', 'Outside the service area', 'Move the pin to a road in Australia.');
+    if (!photo) return toast('warning', 'Add a photo', 'A photo of the defect is required so council can assess it.');
+    if (mobile && photo.meta.photo_source !== 'camera') return toast('warning', 'Take a photo', 'On a phone the photo must be taken with the camera.');
+    const far = photoTooFar(photo);
+    if (far) return toast('warning', 'Photo is too far away', far);
     if (blocking) return toast('warning', 'Already reported', `Open ${blocking.d.id} and tap "Back this report" instead.`);
     if (!userId) return toast('warning', 'Sign in required', 'Create an account or sign in to submit a report.');
     setBusy(true);
     try {
       let photo_url: string;
       try {
-        photo_url = await api.uploadPhoto(photoFile, userId);
+        photo_url = await api.uploadPhoto(photo.file, userId);
       } catch (err) {
         toast('error', 'Photo upload failed', errorMessage(err, 'Please try again. A photo is required.'));
         return;
@@ -226,7 +238,7 @@ export function ReportPage() {
       try {
         created = await api.createDefect({
           title: title.trim(), description: desc.trim(), defect_type: type, severity: sev,
-          road: place.trim(), latitude: lat, longitude: lng, photo_url,
+          road: place.trim(), latitude: lat, longitude: lng, photo_url, photo: photo.meta,
         }, userId);
       } catch (err) {
         void api.deletePhoto(photo_url);   // the report was refused — don't leave its photo behind
@@ -268,8 +280,12 @@ export function ReportPage() {
       {step === 1 && (
         <section className="card p-6">
           <h3 className="mb-2">Where is it?</h3>
-          <p className="text-[13.5px] text-muted mb-5">Search an address, tap the map, or use your device location. You can drag the pin to the exact spot.</p>
-          <div className="relative mb-3">
+          <p className="text-[13.5px] text-muted mb-5">
+            {mobile
+              ? 'Stand at the defect. Your location and street address come from your phone\'s GPS and can\'t be changed by hand.'
+              : 'Search an address, tap the map, or use your device location. You can drag the pin to the exact spot.'}
+          </p>
+          {!mobile && <div className="relative mb-3">
             <label className="sr-only" htmlFor="addr-search">Search for an address</label>
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none"><IconSearch size={16} /></span>
             <input id="addr-search" className="input !pl-9" value={query} autoComplete="off"
@@ -291,27 +307,32 @@ export function ReportPage() {
                 ))}
               </ul>
             )}
-          </div>
+          </div>}
           <div className="mb-4">
-            <DefectMap defects={[]} height={400} onPick={pickSpot}
+            <DefectMap defects={[]} height={mobile ? 300 : 400} onPick={mobile ? undefined : pickSpot}
                        pickedLat={lat} pickedLng={lng} legend={false} />
           </div>
           <div className="flex flex-wrap gap-3 items-end">
             <div className="flex-1 min-w-[220px] grid gap-1.5">
               <label className="label" htmlFor="place-field">
                 Street address or landmark <span className="text-rd-600">*</span>
+                {mobile && <span className="ml-2 font-normal text-muted inline-flex items-center gap-1"><IconLock size={12} /> from GPS</span>}
                 {lookingUp && <span className="ml-2 font-normal text-muted">Finding address…</span>}
               </label>
-              <input id="place-field" className="input" maxLength={200} value={place} onChange={(e) => { setPlace(e.target.value); placeAuto.current = !e.target.value.trim(); }}
-                     placeholder="e.g. Summer St near Anson St, Orange" />
+              <input id="place-field" className={`input ${mobile ? 'bg-surface-2 cursor-not-allowed' : ''}`} maxLength={200} value={place} readOnly={mobile}
+                     onChange={(e) => { setPlace(e.target.value); placeAuto.current = !e.target.value.trim(); }}
+                     placeholder={mobile ? 'Waiting for GPS…' : 'e.g. Summer St near Anson St, Orange'} />
             </div>
-            <button type="button" onClick={useMyLocation} disabled={locating} className="btn btn-secondary">
-              <IconCrosshair size={16} /> {locating ? 'Getting exact location…' : 'Use my location'}
+            <button type="button" onClick={locateMe} disabled={locating} className="btn btn-secondary">
+              <IconCrosshair size={16} /> {locating ? 'Getting exact location…' : mobile && lat != null ? 'Refresh GPS location' : 'Use my location'}
             </button>
           </div>
           {lat != null && lng != null && (
             <div className="mt-2 text-[12px] text-muted mono">
               Pin: {lat.toFixed(5)}, {lng.toFixed(5)}{accuracy != null && ` · ±${Math.round(accuracy)} m`}
+              {mobile && accuracy != null && accuracy > MAX_GPS_ACCURACY_M && (
+                <span className="text-rd-600 font-sans font-semibold"> · too weak, needs ±{MAX_GPS_ACCURACY_M} m or better</span>
+              )}
             </div>
           )}
           {nearby.length > 0 && (
@@ -400,28 +421,14 @@ export function ReportPage() {
       {step === 3 && (
         <section className="card p-6 space-y-6">
           <div>
-            <h3 className="mb-2">Add a photo <span className="text-rd-600">*</span></h3>
-            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
-                   onChange={(e) => pickPhoto(e.target.files?.[0])} />
-            {photoPreview ? (
-              <div className="relative rounded-card overflow-hidden border border-border">
-                <img src={photoPreview} alt="Defect photo preview" className="w-full max-h-[320px] object-cover" />
-                <button type="button" onClick={clearPhoto}
-                        className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 text-white grid place-items-center hover:bg-black/80"
-                        aria-label="Remove photo">
-                  <IconX size={16} />
-                </button>
-              </div>
-            ) : (
-              <div onClick={() => fileInputRef.current?.click()}
-                   onDragOver={(e) => e.preventDefault()}
-                   onDrop={(e) => { e.preventDefault(); pickPhoto(e.dataTransfer.files?.[0]); }}
-                   className="p-8 rounded-card border-2 border-dashed cursor-pointer text-center grid place-items-center gap-2 border-border-strong bg-surface-2 hover:border-brand hover:bg-brand-soft">
-                <IconUpload size={28} className="text-muted" />
-                <div className="text-[14px] font-semibold text-ink-2">Drop a photo here or click to upload</div>
-                <div className="text-[12px] text-muted">JPEG, PNG, or WebP, up to 8MB</div>
-              </div>
-            )}
+            <h3 className="mb-1">{mobile ? 'Take a photo' : 'Add a photo'} <span className="text-rd-600">*</span></h3>
+            <p className="text-[13px] text-muted mb-3">
+              {mobile
+                ? `Use the camera at the defect. The date, time, GPS position and address are stamped on the photo. It must be taken within ${MAX_PHOTO_DISTANCE_M} m of the spot you reported.`
+                : 'Take one with your camera, or upload a photo. Uploaded photos are marked as uploads for council to check.'}
+            </p>
+            <PhotoField large value={photo} onChange={setPhoto} validate={photoTooFar} label="Open camera"
+                        place={lat != null && lng != null ? { lat, lng, label: place.trim() || undefined } : null} />
           </div>
 
           <div className="p-4 rounded-lg bg-surface-2 border border-border grid gap-2 text-[13.5px]">
@@ -451,7 +458,7 @@ export function ReportPage() {
         {step < 3 ? (
           <button className="btn btn-primary" onClick={next}>Next <IconRight size={16} /></button>
         ) : (
-          <button className="btn btn-success" onClick={submit} disabled={busy || !photoFile} title={photoFile ? undefined : 'Add a photo first'}>
+          <button className="btn btn-success" onClick={submit} disabled={busy || !photo} title={photo ? undefined : 'Add a photo first'}>
             <IconCheck size={16} /> {busy ? 'Submitting…' : 'Submit report'}
           </button>
         )}

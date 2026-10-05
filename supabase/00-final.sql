@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════
--- RoadFix — ALL-IN-ONE Supabase Setup
+-- RoadFix — FINAL Supabase Setup (fresh data, sign-in accounts kept)
 --
 -- Paste this whole file into Supabase SQL Editor and click "Run".
 --
@@ -24,8 +24,9 @@
 --                       makes council@gmail.com an admin
 --
 -- No dummy data: contractors, defects, updates etc. all start EMPTY.
--- Sign-in accounts (Authentication → Users) are kept; their profiles are
--- re-created as residents, and council@gmail.com becomes council.
+-- Sign-in accounts (Authentication → Users) are KEPT with their passwords;
+-- their profiles are re-created (residents, or contractors if they signed
+-- up as one), and council@gmail.com becomes council.
 --
 -- Safe to run again at any time (it wipes and rebuilds). It includes
 -- everything from 01 → 08, so you never need those if you run this.
@@ -90,9 +91,10 @@ begin
 end $$;
 
 
--- Optional: also delete every user account (Authentication → Users).
--- Uncomment ONLY if you want all users gone and plan to sign up again.
--- delete from auth.users;
+-- Sign-in accounts are kept. Make sure none is stuck on "Email not confirmed"
+update auth.users
+   set email_confirmed_at = coalesce(email_confirmed_at, now())
+ where email_confirmed_at is null;
 
 -- Note: uploaded photo FILES can't be deleted with SQL on Supabase.
 -- To remove them: Dashboard → Storage → defect-photos → select all → Delete.
@@ -1226,11 +1228,13 @@ update public.profiles
  where lower(email) = 'council@gmail.com';
 
 -- ─── Confirm ──────────────────────────────────────────────────────
-select 'contractors'    as "table", count(*) as rows from public.contractors
+select 'auth users'     as "table", count(*) as rows from auth.users
+union all select 'contractors',    count(*) from public.contractors
 union all select 'defects',        count(*) from public.defects
 union all select 'repair_updates', count(*) from public.repair_updates
 union all select 'profiles',       count(*) from public.profiles;
 
 -- ═══════════════════════════════════════════════════════════════════
--- Done! Database wiped and rebuilt from scratch.
+-- Done! Database wiped and rebuilt. Every sign-in account has a profile
+-- again; contractors, defects and updates start at 0.
 -- ═══════════════════════════════════════════════════════════════════

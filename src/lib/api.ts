@@ -1,6 +1,7 @@
 import { HAS_SUPABASE, supabase } from './supabase';
 import { daysAgo, newDefectId, safePhotoUrl, errorMessage } from './utils';
 import { shrinkPhoto } from './image';
+import type { PhotoMeta } from './evidence';
 import type {
   Defect, DBDefect, Contractor, Profile, RepairUpdate,
   DefectFilters, SignUpInput, SignInInput, CreateDefectInput,
@@ -210,7 +211,7 @@ export const api = {
         defect_type: input.defect_type, severity: input.severity, status: 'pending',
         road: input.road, suburb: input.suburb || 'Orange',
         latitude: input.latitude, longitude: input.longitude,
-        depth: null, width: null, photo_url: input.photo_url ?? null,
+        depth: null, width: null, photo_url: input.photo_url ?? null, ...input.photo, photo_flags: [],
         votes: 0, progress: 0, reject_reason: null,
         reported_by: userId, contractor_id: null,
         reported_at: new Date().toISOString(), updated_at: new Date().toISOString(),
@@ -229,6 +230,7 @@ export const api = {
       road: input.road, suburb: input.suburb || 'Orange',
       latitude: input.latitude, longitude: input.longitude,
       photo_url: input.photo_url ?? null,
+      ...input.photo,
       reported_by: userId,
     };
     const { data, error } = await supabase.from('defects').insert(insert).select().single<DBDefect>();
@@ -278,13 +280,13 @@ export const api = {
   },
 
   /** Contractor finishes a job — a photo of the finished repair is required. Photo update + status change in one step. */
-  async completeJob(id: string, note: string, photoUrl: string, actorId: string): Promise<void> {
+  async completeJob(id: string, note: string, photoUrl: string, photo: PhotoMeta, actorId: string): Promise<void> {
     if (!HAS_SUPABASE) {
-      await this.addUpdate(id, { action: 'Repair complete', note: note || 'Site cleared. Waiting for council to verify.', progress: 100, photo_url: photoUrl }, actorId, 'contractor');
+      await this.addUpdate(id, { action: 'Repair complete', note: note || 'Site cleared. Waiting for council to verify.', progress: 100, photo_url: photoUrl, photo }, actorId, 'contractor');
       await this.updateDefect(id, { status: 'completed', progress: 100 });
       return;
     }
-    const { error } = await supabase.rpc('complete_job', { p_defect_id: id, p_note: note, p_photo_url: photoUrl });
+    const { error } = await supabase.rpc('complete_job', { p_defect_id: id, p_note: note, p_photo_url: photoUrl, p_photo: photo });
     if (error) throw error;
   },
 
@@ -333,7 +335,7 @@ export const api = {
 
   async addUpdate(
     defectId: string,
-    body: { action: string; note?: string; progress?: number | null; photo_url?: string | null },
+    body: { action: string; note?: string; progress?: number | null; photo_url?: string | null; photo?: PhotoMeta | null },
     actorId: string,
     actorRole: 'citizen' | 'contractor' | 'admin' | null,
   ): Promise<void> {
@@ -342,7 +344,7 @@ export const api = {
       arr.push({
         id: `${defectId}-${arr.length}`, defect_id: defectId,
         action: body.action, note: body.note ?? null,
-        progress: body.progress ?? null, photo_url: body.photo_url ?? null,
+        progress: body.progress ?? null, photo_url: body.photo_url ?? null, ...body.photo, photo_flags: [],
         actor_id: actorId, actor_role: actorRole,
         created_at: new Date().toISOString(),
       });
@@ -358,6 +360,7 @@ export const api = {
       note: body.note ?? null,
       progress: body.progress ?? null,
       photo_url: body.photo_url ?? null,
+      ...body.photo,
       actor_id: actorId,
       actor_role: actorRole,
     };

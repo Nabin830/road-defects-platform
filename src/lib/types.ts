@@ -1,3 +1,8 @@
+import type { PhotoMeta } from './evidence';
+
+/** Photo details saved with a report or timeline photo; photo_flags is set by the database. */
+export type PhotoInfo = Partial<PhotoMeta> & { photo_flags?: string[] | null };
+
 // ─── Enums / literal types ───────────────────────────────────────────
 export type Role = 'citizen' | 'contractor' | 'admin';
 export type Severity = 'low' | 'medium' | 'high' | 'critical';
@@ -29,7 +34,7 @@ export interface Contractor {
   created_at: string;
 }
 
-export interface Defect {
+export interface Defect extends PhotoInfo {
   id: string;
   title: string;
   description: string;
@@ -59,7 +64,7 @@ export interface Defect {
   mine: boolean;
 }
 
-export interface RepairUpdate {
+export interface RepairUpdate extends PhotoInfo {
   id: string;
   defect_id: string;
   action: string;
@@ -103,6 +108,7 @@ export interface CreateDefectInput {
   latitude: number;
   longitude: number;
   photo_url?: string | null;
+  photo?: PhotoMeta | null;
 }
 
 export interface PlatformStats {
@@ -116,7 +122,7 @@ export interface PlatformStats {
 // ─── Analytics shape ──────────────────────────────────────────────────
 
 // ─── Supabase row types (database shape, before mapping) ─────────────
-export interface DBDefect {
+export interface DBDefect extends PhotoInfo {
   id: string;
   title: string;
   description: string;

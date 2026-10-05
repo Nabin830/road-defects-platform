@@ -3,8 +3,10 @@ import { Photo, PhotoMissing } from './Photo';
 import { relativeTime } from '../lib/utils';
 import { ROLE_LABEL } from '../lib/constants';
 import { IconCheck, IconClock } from '../lib/icons';
+import { PhotoChecks } from './PhotoChecks';
 
-export function Timeline({ updates }: { updates: RepairUpdate[] }) {
+/** showPhotoChecks: council sees how each photo was taken and any warnings. */
+export function Timeline({ updates, showPhotoChecks }: { updates: RepairUpdate[]; showPhotoChecks?: boolean }) {
   return (
     <div className="grid gap-0">
       {updates.map((u, i) => {
@@ -31,6 +33,7 @@ export function Timeline({ updates }: { updates: RepairUpdate[] }) {
                          fallback={<PhotoMissing className="h-20 w-40 rounded-lg border border-border" />} />
                 </a>
               )}
+              {showPhotoChecks && u.photo_url && <PhotoChecks info={u} compact />}
               {typeof u.progress === 'number' && u.progress > 0 && (
                 <div className="mt-2 flex items-center gap-3">
                   <div className="flex-1 prog"><i style={{ width: `${u.progress}%` }} /></div>
