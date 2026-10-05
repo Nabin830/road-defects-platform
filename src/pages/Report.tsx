@@ -17,7 +17,7 @@ import { isMobileDevice, MAX_GPS_ACCURACY_M, MAX_PHOTO_DISTANCE_M, type PhotoEvi
 
 const NEARBY_M = 150;
 
-// Must match the database (check_report_text in supabase/00-all-in-one.sql), which enforces the same limits
+// Must match the database (check_report_text in supabase/Database.sql), which enforces the same limits
 const TITLE_MIN = 8, TITLE_MAX = 100, DESC_MIN = 20, DESC_MAX = 2000;
 
 /** Rejects keyboard mashing like "ghh" / "aaaaaaa": needs real words, not one repeated character. */

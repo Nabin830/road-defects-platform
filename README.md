@@ -17,8 +17,8 @@ cp .env.example .env.local     # then fill in your Supabase URL and anon key
 npm run dev                    # http://localhost:5173
 ```
 
-Requires **Node 20+**. Then set up the database: run `supabase/00-all-in-one.sql` once in the Supabase
-SQL Editor and turn **Confirm email** off (details in [`docs/02-SUPABASE.md`](docs/02-SUPABASE.md)).
+Requires **Node 20+**. Then set up the database: create `council@gmail.com` in Supabase (Authentication → Users), then run
+`supabase/Database.sql` once in the SQL Editor and turn **Confirm email** off (details in [`docs/02-SUPABASE.md`](docs/02-SUPABASE.md)).
 
 Without Supabase credentials the app runs in an offline **demo mode** (empty, in-memory data) so the UI can
 be previewed; it never runs while Supabase is configured.
@@ -33,7 +33,7 @@ be previewed; it never runs while Supabase is configured.
 | Council | Triage and re-grade reports, assign contractors with a work order and fix-by date, verify or send back repairs, reject reports, manage people and companies, view reports and export CSV |
 
 Council accounts are granted in the database, never by sign-up. `council@gmail.com` becomes council when
-`00-all-in-one.sql` runs, if the account already exists (otherwise see `QUICK_START.md` step 3). RoadFix sends **no emails** — all updates appear in the app.
+`Database.sql` runs (the account must exist first). RoadFix sends **no emails** — all updates appear in the app.
 
 ## Rules the database enforces
 
@@ -68,8 +68,7 @@ src/
   assets/             Web-optimised logos and illustrations
   Logos/              Original brand artwork (not all used by the site)
 supabase/
-  00-all-in-one.sql   Wipes and builds the whole database (includes everything in 01–07)
-  01–07-*.sql         Upgrades for a database whose data you want to keep
+  Database.sql        The only SQL file: wipes and builds the whole database
   functions/geocode/  Optional Edge Function: cached address lookups
 scripts/seo-build.mjs Runs after the build: per-page meta, robots.txt, sitemap.xml
 docs/                 Setup, Supabase, deployment, troubleshooting

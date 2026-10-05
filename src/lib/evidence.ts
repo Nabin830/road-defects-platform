@@ -1,6 +1,6 @@
 /** Photo evidence: live-camera capture metadata, the burned-in info stamp, and the "fingerprint"
  *  the database uses to spot a photo that was already used on another report.
- *  Checks are repeated by the database (check_photo_evidence in supabase/08-photo-checks.sql). */
+ *  Checks are repeated by the database (check_photo_evidence in supabase/Database.sql). */
 import { metres } from './utils';
 
 /** Worst GPS accuracy a phone may take a report photo with. */

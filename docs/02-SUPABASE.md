@@ -25,14 +25,18 @@ VITE_SUPABASE_ANON_KEY=eyJhbGc...
 
 ## 3. Run the SQL
 
-Open the **SQL Editor** in your Supabase dashboard, paste the whole of
-`supabase/00-all-in-one.sql` and click **Run**. That one file:
+First make sure `council@gmail.com` exists in **Authentication → Users** (**Add user → Create new
+user**, tick **Auto Confirm User**) — the script stops without changing anything if it doesn't.
 
-- **wipes** every previous table, function and policy in the `public` schema (and the old
-  `@example.com` demo accounts) — this deletes all existing data, there is no undo
+Then open the **SQL Editor** in your Supabase dashboard, paste the whole of
+`supabase/Database.sql` and click **Run**. It is the only SQL file and is safe to run again. It:
+
+- **wipes** every previous table, function and policy in the `public` schema — this deletes all existing data, there is no undo
+- **deletes every sign-in account except `council@gmail.com`** (residents and contractors register again)
 - creates the tables, indexes, triggers and row-level security policies
 - creates the `followers` table and the `defect-photos` storage bucket
-- recreates profiles for existing accounts and makes `council@gmail.com` an admin
+- adds the photo checks (live camera vs upload, GPS, reused-photo fingerprints)
+- makes `council@gmail.com` an admin
 
 No dummy data is inserted — contractors and defects start empty and are created from the app.
 Uploaded photo files are not removed by SQL; clear them in **Storage → defect-photos** if needed.
@@ -88,24 +92,8 @@ Then tell the person their temporary password in person or by phone, and ask the
 - **Duplicates**: when reporting, open reports within 150 m of the pin are shown so residents can back
   an existing report instead of filing a new one.
 
-### Updating a database that already has data
-
-`00-all-in-one.sql` wipes everything. To upgrade an existing database instead, run these in the SQL
-Editor, in order, skipping any you've already run. Each keeps your data:
-
-| File | What it adds |
-| --- | --- |
-| `01-work-orders.sql` | Work orders and council-set fix-by dates |
-| `02-upgrades.sql` | Spam limits and the address lookup cache |
-| `03-fix-length-check.sql` | Lets older short reports be updated again |
-| `04-workflow-rules.sql` | Required photos, stage order, duplicate blocking |
-| `05-anti-tamper.sql` | Stops people bypassing the website to fake data (see below) |
-| `06-hardening.sql` | Text limits, fair backing, timeline flood limit, company edits, notification clean-up |
-| `07-search-path.sql` | Pins every function's `search_path` (clears Supabase's "Function Search Path Mutable" warning) |
-| `08-photo-checks.sql` | Saves how each photo was taken (live camera or upload, time, GPS) and flags reused, far-away or weak-GPS photos for council |
-
-**Why 05 matters:** anyone can send requests straight to the database without using the website.
-05 makes the database enforce what each role may change: new reports always start clean and inside
+**Why the anti-tamper rules matter:** anyone can send requests straight to the database without using the website.
+`Database.sql` makes the database enforce what each role may change: new reports always start clean and inside
 the council area, residents only edit their own pending report's wording/photo/location, contractors
 only move their own jobs along, timeline entries must match the poster's real role, photo links must
 point at the RoadFix photo bucket, and votes stay private.
@@ -119,8 +107,8 @@ sign-up shows an error asking council to turn it off.
 
 ## 5. Create the admin account
 
-Sign up `council@gmail.com` in the app (or **Authentication → Users → Add user**), then re-run
-`supabase/00-all-in-one.sql` — or just this line — to make it an admin:
+`Database.sql` already does this if `council@gmail.com` existed when it ran. To promote it without
+wiping anything, run just this line:
 
 ```sql
 update public.profiles set role = 'admin' where lower(email) = 'council@gmail.com';

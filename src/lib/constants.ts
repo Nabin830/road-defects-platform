@@ -6,7 +6,7 @@ export const ROLE_LABEL: Record<Role, string> = { citizen: 'Resident', contracto
 export const ORANGE = { lat: -33.2839, lng: 149.0988 };
 /** Where reports are accepted: all of Australia (incl. Tasmania) while testing.
  *  For Orange only use { north: -33.12, south: -33.48, west: 148.88, east: 149.30 }.
- *  Must match in_council_area() in supabase/00-all-in-one.sql and 00-final.sql. */
+ *  Must match in_council_area() in supabase/Database.sql. */
 export const COUNCIL_AREA = { north: -9.0, south: -44.0, west: 112.0, east: 154.0 };
 export const inCouncilArea = (lat: number, lng: number) =>
   lat <= COUNCIL_AREA.north && lat >= COUNCIL_AREA.south && lng >= COUNCIL_AREA.west && lng <= COUNCIL_AREA.east;
