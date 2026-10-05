@@ -18,9 +18,15 @@ export function pushUnavailableReason(): string | null {
   return null;
 }
 
+/** The site's service worker, or null if none is registered (e.g. the dev server).
+ *  Not `serviceWorker.ready` — that never resolves without one, which froze sign-out. */
+async function registration(): Promise<ServiceWorkerRegistration | null> {
+  return (await navigator.serviceWorker.getRegistration()) ?? null;
+}
+
 async function currentSubscription(): Promise<PushSubscription | null> {
-  const reg = await navigator.serviceWorker.ready;
-  return reg.pushManager.getSubscription();
+  const reg = await registration();
+  return reg ? reg.pushManager.getSubscription() : null;
 }
 
 export async function isPushOn(): Promise<boolean> {
@@ -35,7 +41,8 @@ export async function enablePush(): Promise<void> {
   if (permission !== 'granted') {
     throw new Error('Notifications are blocked. Allow them for this site in your phone or browser settings.');
   }
-  const reg = await navigator.serviceWorker.ready;
+  const reg = await registration();
+  if (!reg) throw new Error('Notifications work on the live site (or the installed app). Open RoadFix there and try again.');
   const sub = (await reg.pushManager.getSubscription())
     ?? await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlToBytes(VAPID_KEY) });
   await api.savePushSubscription(sub.toJSON());

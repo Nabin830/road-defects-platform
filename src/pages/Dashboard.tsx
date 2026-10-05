@@ -23,7 +23,7 @@ export function DashboardPage() {
   useEffect(() => {
     if (!userId) return;
     api.myReports(userId).then(setMine)
-      .catch(() => toast('error', "Couldn't load your reports", 'Check your connection, then refresh the page.'))
+      .catch(() => { if (navigator.onLine) toast('error', "Couldn't load your reports", 'Check your connection, then refresh the page.'); })
       .finally(() => setLoading(false));
     api.listDefects({}, userId).then(setAll).catch(() => {});
   }, [userId, demoRole, toast]);

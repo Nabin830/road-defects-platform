@@ -256,7 +256,14 @@ export const api = {
       // Already saved by an earlier try of this same report → that's success
       if (opts.id) {
         const { data: saved } = await supabase.from('defects').select('*').eq('id', id).maybeSingle<DBDefect>();
-        if (saved?.reported_by === userId) return mapDefect(saved, userId);
+        if (saved?.reported_by === userId) {
+          // The first try may have died before its timeline entry (which is what tells council)
+          const { data: logged } = await supabase.from('repair_updates').select('id').eq('defect_id', id).eq('action', 'Report submitted').limit(1);
+          if (!logged?.length) {
+            await this.addUpdate(id, { action: 'Report submitted', note: 'Report captured with location and description.', progress: 0 }, userId, 'citizen').catch(() => {});
+          }
+          return mapDefect(saved, userId);
+        }
       }
       // Someone else's report got the same ID in the same second — try again with a fresh one
       return this.createDefect(input, userId, { ...opts, id: undefined }, attempt + 1);
