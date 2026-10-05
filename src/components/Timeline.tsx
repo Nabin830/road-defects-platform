@@ -1,8 +1,12 @@
 import type { RepairUpdate } from '../lib/types';
+import { Photo, PhotoMissing } from './Photo';
 import { relativeTime } from '../lib/utils';
+import { ROLE_LABEL } from '../lib/constants';
 import { IconCheck, IconClock } from '../lib/icons';
+import { PhotoChecks } from './PhotoChecks';
 
-export function Timeline({ updates }: { updates: RepairUpdate[] }) {
+/** showPhotoChecks: council sees how each photo was taken and any warnings. */
+export function Timeline({ updates, showPhotoChecks }: { updates: RepairUpdate[]; showPhotoChecks?: boolean }) {
   return (
     <div className="grid gap-0">
       {updates.map((u, i) => {
@@ -17,11 +21,19 @@ export function Timeline({ updates }: { updates: RepairUpdate[] }) {
             <div className="pt-1">
               <div className="text-[13.5px] font-semibold text-ink">{u.action}</div>
               <div className="text-[11.5px] text-muted mt-0.5">
-                {u.actor_role ? u.actor_role.charAt(0).toUpperCase() + u.actor_role.slice(1) : 'System'}
+                {u.actor_role ? ROLE_LABEL[u.actor_role] : 'System'}
                 {' · '}
                 {relativeTime(u.created_at)}
               </div>
-              {u.note && <div className="text-[13px] text-ink-2 mt-1.5">{u.note}</div>}
+              {u.note && <div className="text-[13px] text-ink-2 mt-1.5 whitespace-pre-line">{u.note}</div>}
+              {u.photo_url && u.photo_url !== 'photo' && (
+                <a href={u.photo_url} target="_blank" rel="noreferrer" className="block mt-2 w-fit">
+                  <Photo src={u.photo_url} alt={`Photo: ${u.action}`} loading="lazy"
+                         className="max-h-[180px] max-w-full rounded-lg border border-border object-cover hover:opacity-90"
+                         fallback={<PhotoMissing className="h-20 w-40 rounded-lg border border-border" />} />
+                </a>
+              )}
+              {showPhotoChecks && u.photo_url && <PhotoChecks info={u} compact />}
               {typeof u.progress === 'number' && u.progress > 0 && (
                 <div className="mt-2 flex items-center gap-3">
                   <div className="flex-1 prog"><i style={{ width: `${u.progress}%` }} /></div>

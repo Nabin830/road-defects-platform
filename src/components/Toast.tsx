@@ -4,14 +4,14 @@ import { IconCheckCircle, IconAlert, IconBell, IconX } from '../lib/icons';
 export function ToastHost() {
   const { toasts, dismissToast } = useUI();
   return (
-    <div className="fixed top-4 right-4 z-[9500] grid gap-2.5 w-[340px] max-w-[calc(100vw-2rem)]">
+    <div className="fixed top-[76px] right-4 z-[9500] grid gap-2.5 w-[340px] max-w-[calc(100vw-2rem)]" role="status" aria-live="polite">
       {toasts.map(t => {
         const color = t.kind === 'success' ? 'var(--em-600, #059669)'
                     : t.kind === 'error'   ? '#DC2626'
-                    : t.kind === 'warning' ? '#F59E0B' : '#0EA5E9';
+                    : t.kind === 'warning' ? '#F59E0B' : '#F7862E';
         const borderL = t.kind === 'success' ? 'border-l-em-600'
                       : t.kind === 'error'   ? 'border-l-rd-600'
-                      : t.kind === 'warning' ? 'border-l-am-500' : 'border-l-sky-500';
+                      : t.kind === 'warning' ? 'border-l-am-500' : 'border-l-brand';
         const Icon = t.kind === 'success' ? IconCheckCircle : t.kind === 'error' ? IconAlert : t.kind === 'warning' ? IconAlert : IconBell;
         return (
           <div key={t.id}

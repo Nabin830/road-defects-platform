@@ -1,13 +1,23 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { BrandLogo } from '../components/Brand';
+import sticker from '../assets/sticker-lockup.webp';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { homeFor } from '../components/ProtectedRoute';
 import { useAuth } from '../store/auth';
 import { useUI } from '../store/ui';
 import { HAS_SUPABASE } from '../lib/supabase';
-import { IconMail, IconLock, IconEye, IconShield, IconWrench } from '../lib/icons';
+import { IconMail, IconLock, IconEye, IconShield } from '../lib/icons';
+import { useSeo } from '../lib/seo';
+import { errorMessage } from '../lib/utils';
 
 export function LoginPage() {
+  useSeo({ title: 'Sign in', description: 'Sign in to RoadFix to report road defects and follow repairs in Orange, NSW.', noindex: true });
+  // Already signed in when the page opened → go to their own home instead of showing the form again
+  const [alreadyIn] = useState(() => { const a = useAuth.getState(); return a.ready && a.authed ? a.role : null; });
   const nav = useNavigate();
-  const { signIn, setDemoRole, role } = useAuth();
+  // Page the user was sent here from (e.g. /report), so we can return them after sign-in
+  const from = (useLocation().state as { from?: string } | null)?.from;
+  const { signIn, setDemoRole } = useAuth();
   const { toast } = useUI();
 
   const [email, setEmail] = useState('');
@@ -24,39 +34,42 @@ export function LoginPage() {
         // role will be updated by store; read it fresh
         const r = useAuth.getState().role;
         toast('success', 'Welcome back', 'Signed in successfully.');
-        nav(r === 'admin' ? '/admin' : r === 'contractor' ? '/contractor' : '/dashboard');
+        void nav(from || (r === 'admin' ? '/admin' : r === 'contractor' ? '/contractor' : '/dashboard'));
       } else {
         // Demo mode: pick role by email prefix
         const inferred = email.startsWith('admin') ? 'admin' : email.startsWith('contractor') ? 'contractor' : 'citizen';
         setDemoRole(inferred);
         toast('success', 'Signed in (demo)', 'Configure Supabase for real accounts.');
-        nav(inferred === 'admin' ? '/admin' : inferred === 'contractor' ? '/contractor' : '/dashboard');
+        void nav(inferred === 'admin' ? '/admin' : inferred === 'contractor' ? '/contractor' : '/dashboard');
       }
-    } catch (err: any) {
-      toast('error', 'Sign in failed', err.message || 'Check your email and password.');
+    } catch (err) {
+      toast('error', 'Sign in failed', errorMessage(err, 'Check your email and password.'));
     } finally {
       setBusy(false);
     }
   }
 
+  if (alreadyIn) return <Navigate to={homeFor(alreadyIn)} replace />;
+
   return (
-    <div className="min-h-screen grid md:grid-cols-2">
+    <main className="min-h-screen grid md:grid-cols-2">
       {/* Left brand panel */}
       <div className="hidden md:flex flex-col justify-between p-10 hero-grad">
-        <Link to="/" className="flex items-center gap-2.5 font-extrabold text-[15px] tracking-tight text-ink hover:no-underline">
-          <span className="w-7 h-7 rounded-lg bg-brand text-brand-ink grid place-items-center"><IconWrench size={14} /></span>
-          Road Defects
+        <Link to="/" className="self-start hover:no-underline" aria-label="RoadFix home">
+          <BrandLogo className="h-8" />
         </Link>
         <div>
+          <img src={sticker} alt="RoadFix sticker" width={160} height={160} decoding="async" className="w-40 h-40 mb-6 drop-shadow-md" />
           <h2 className="text-3xl leading-tight mb-3">Every pothole reported gets closer to fixed.</h2>
           <p className="text-ink-2 max-w-md">Sign in to track your reports, follow repair progress, and back defects nearby.</p>
         </div>
-        <div className="text-xs text-muted">NSW Central West · Trusted by 4 councils</div>
+        <div className="text-xs text-muted">Orange City Council · RoadFix</div>
       </div>
 
       {/* Right form */}
       <div className="flex flex-col justify-center p-8 md:p-12">
         <div className="w-full max-w-[400px] mx-auto">
+          <Link to="/" className="md:hidden inline-block mb-8" aria-label="RoadFix home"><BrandLogo className="h-7" /></Link>
           <h1 className="text-[27px]">Sign in</h1>
           <p className="text-muted mt-1.5">Track your reports and get repair updates.</p>
 
@@ -82,11 +95,8 @@ export function LoginPage() {
                 </button>
               </div>
             </div>
-            <div className="flex items-center justify-between text-[13px]">
-              <label className="flex items-center gap-2 text-ink-2 cursor-pointer">
-                <input type="checkbox" defaultChecked className="w-4 h-4 accent-brand" /> Remember me
-              </label>
-              <a href="#" className="font-semibold">Forgot password?</a>
+            <div className="-mt-1 text-right">
+              <span className="text-[12.5px] text-muted">Forgot your password? Ask council to reset it.</span>
             </div>
             <button className="btn btn-primary btn-lg btn-block" type="submit" disabled={busy}>
               {busy ? 'Signing in…' : 'Sign in'}
@@ -107,6 +117,6 @@ export function LoginPage() {
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

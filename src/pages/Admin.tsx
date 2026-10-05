@@ -3,23 +3,26 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { DefectMap } from '../components/DefectMap';
 import { StatCard } from '../components/StatCard';
-import { StatusBadge } from '../components/Badge';
 import { SeverityChip } from '../components/Severity';
-import { IconChart, IconWrench, IconUsers, IconTrend, IconAlert, IconStar, IconDownload } from '../lib/icons';
+import { IconChart, IconUsers, IconAlert, IconClock, IconDownload } from '../lib/icons';
 import { STATUS, SEVERITY } from '../lib/constants';
 import { relativeTime } from '../lib/utils';
 import { useUI } from '../store/ui';
+import { slaStatus, dueDate } from '../lib/sla';
+import { SlaChip } from '../components/SlaChip';
 import type { Defect, Contractor, DefectStatus, Severity as Sev } from '../lib/types';
+import { useSeo } from '../lib/seo';
 
 export function AdminPage() {
+  useSeo({ title: 'Council overview', noindex: true });
   const { toast } = useUI();
   const [defects, setDefects] = useState<Defect[]>([]);
   const [contractors, setContractors] = useState<Contractor[]>([]);
 
   useEffect(() => {
-    api.listDefects({}).then(setDefects).catch(() => {});
+    api.listDefects({}).then(setDefects).catch(() => toast('error', "Couldn't load reports", 'Check your connection, then refresh the page.'));
     api.listContractors().then(setContractors).catch(() => {});
-  }, []);
+  }, [toast]);
 
   const total = defects.length;
   const byStatus: Record<DefectStatus, number> = { pending: 0, assigned: 0, progress: 0, completed: 0, rejected: 0 };
@@ -27,18 +30,32 @@ export function AdminPage() {
   for (const d of defects) { byStatus[d.status]++; bySeverity[d.severity]++; }
 
   const pending = defects.filter(d => d.status === 'pending');
-  const critical = defects.filter(d => d.severity === 'critical' && d.status !== 'completed' && d.status !== 'rejected');
-  const activeContractors = contractors.length;
+  const toVerify = defects.filter(d => d.status === 'completed' && !d.verified_at);
+  const overdue = defects.filter(d => slaStatus(d)?.overdue);
+  const dueSoon = defects.filter(d => slaStatus(d)?.soon);
+  // Most overdue first, then the ones about to run out
+  const urgent = [...overdue, ...dueSoon].sort((a, b) => +dueDate(a) - +dueDate(b));
+  const conName = (id: string | null) => (id && contractors.find(c => c.id === id)?.name) || '';
 
   function exportCsv() {
     if (defects.length === 0) return toast('warning', 'Nothing to export', 'No defects loaded yet.');
-    const cols: (keyof Defect)[] = ['id', 'title', 'defect_type', 'severity', 'status', 'road', 'suburb', 'latitude', 'longitude', 'votes', 'progress', 'reported_at', 'contractor_id'];
+    const cols: [string, (d: Defect) => unknown][] = [
+      ['ID', d => d.id], ['Title', d => d.title], ['Type', d => d.defect_type], ['Severity', d => d.severity],
+      ['Status', d => d.status], ['Address', d => d.road], ['Suburb', d => d.suburb],
+      ['Latitude', d => d.latitude], ['Longitude', d => d.longitude], ['Backing', d => d.votes], ['Progress %', d => d.progress],
+      ['Reported', d => d.reported_at], ['Contractor', d => conName(d.contractor_id)], ['Work order', d => d.work_instructions],
+      ['Fix by', d => dueDate(d).toISOString()], ['Deadline status', d => slaStatus(d)?.label ?? (d.verified_at ? 'Verified' : d.status)],
+      ['Verified', d => d.verified_at], ['Reject reason', d => d.reject_reason],
+    ];
     const esc = (v: unknown) => {
-      const s = v == null ? '' : String(v);
+      let s = v == null ? '' : typeof v === 'string' ? v : typeof v === 'number' || typeof v === 'boolean' ? String(v) : JSON.stringify(v);
+      // Text typed by the public could start with = + - @ and run as a formula in Excel — neutralise it
+      if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const csv = [cols.join(','), ...defects.map(d => cols.map(c => esc(d[c])).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const csv = [cols.map(c => c[0]).join(','), ...defects.map(d => cols.map(([, get]) => esc(get(d))).join(','))].join('\n');
+    // BOM so Excel opens it as UTF-8 (keeps en dashes and accents intact)
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -51,21 +68,53 @@ export function AdminPage() {
   }
 
   return (
-    <main className="w-full max-w-[1560px] mx-auto px-6 py-8">
+    <main className="w-full max-w-[1280px] mx-auto px-6 py-8">
       <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
         <div>
-          <span className="section-label">Admin · Orange City Council</span>
-          <h1 className="mt-1">Program overview</h1>
-          <p className="text-muted mt-1">All defects, all contractors, all channels.</p>
+          <span className="section-label">Council</span>
+          <h1 className="mt-1">Overview</h1>
+          <p className="text-muted mt-1">Everything reported to council, and where each repair is up to.</p>
         </div>
         <button onClick={exportCsv} className="btn btn-secondary"><IconDownload size={16} /> Export CSV</button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <StatCard k="Total defects" v={total} d="live in the program" icon={<IconChart size={16} />} color="#1E40AF" bg="#EFF6FF" />
-        <StatCard k="Pending triage" v={pending.length} d="need review" icon={<IconAlert size={16} />} color="#B45309" bg="#FFFBEB" />
-        <StatCard k="Critical open" v={critical.length} d="SLA under 24h" icon={<IconStar size={16} />} color="#B91C1C" bg="#FEF2F2" />
-        <StatCard k="Contractors" v={activeContractors} d="on the panel" icon={<IconUsers size={16} />} color="#6D28D9" bg="#F5F3FF" />
+        <StatCard k="Total defects" v={total} d="live in the program" icon={<IconChart size={16} />} color="var(--brand-text)" />
+        <StatCard k="Pending triage" v={pending.length} d="new reports" icon={<IconAlert size={16} />} color="#B45309" />
+        <StatCard k="Overdue" v={overdue.length} d="past their deadline" icon={<IconClock size={16} />} color="#B91C1C" />
+        <StatCard k="Awaiting sign-off" v={toVerify.length} d="repairs to verify" icon={<IconUsers size={16} />} color="#047857" />
+      </div>
+
+      {/* Deadlines needing attention */}
+      {urgent.length > 0 && (
+        <div className="mb-5">
+          <ActionList
+            title={`Overdue or due within 24 hours`}
+            empty=""
+            rows={urgent.slice(0, 10).map(d => ({ d, meta: `${d.road}${d.contractor_id ? ` · ${conName(d.contractor_id)}` : ' · not assigned yet'}` }))}
+            cta="Open"
+            ctaCls="btn-danger"
+            tone="danger"
+          />
+        </div>
+      )}
+
+      {/* What council needs to act on */}
+      <div className="grid lg:grid-cols-2 gap-5 mb-8">
+        <ActionList
+          title="New reports to triage"
+          empty="No new reports waiting."
+          rows={pending.slice(0, 8).map(d => ({ d, meta: `${d.road} · reported ${relativeTime(d.reported_at)}` }))}
+          cta="Assign"
+          ctaCls="btn-primary"
+        />
+        <ActionList
+          title="Repairs awaiting verification"
+          empty="No finished repairs to check."
+          rows={toVerify.map(d => ({ d, meta: `${contractors.find(c => c.id === d.contractor_id)?.name || 'Contractor'} · marked complete ${relativeTime(d.updated_at)}` }))}
+          cta="Review"
+          ctaCls="btn-success"
+        />
       </div>
 
       <div className="grid xl:grid-cols-3 gap-5 mb-8">
@@ -115,17 +164,16 @@ export function AdminPage() {
       </div>
 
       {/* Contractors table + map */}
-      <div className="grid xl:grid-cols-[minmax(0,1fr)_420px] gap-5 mb-8">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-5 mb-8 items-start">
         <div className="card">
           <div className="card-head">
             <h3 className="flex-1">Contractor performance</h3>
-            <span className="text-xs text-muted">This month</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-[13.5px]">
               <thead>
                 <tr className="bg-surface-2 border-b border-border">
-                  {['Contractor', 'Crew', 'Assigned', 'In progress', 'Completed', 'Rating'].map(h => (
+                  {['Contractor', 'Assigned', 'In progress', 'Completed'].map(h => (
                     <th key={h} className="text-left px-4 py-2.5 text-[11px] font-bold uppercase tracking-widest text-muted whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -140,20 +188,13 @@ export function AdminPage() {
                     <tr key={c.id} className="border-b border-border last:border-0 hover:bg-surface-2">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
-                          <span className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 grid place-items-center text-xs font-bold">{c.abbr}</span>
+                          <span className="w-8 h-8 rounded-full bg-brand-soft text-brand grid place-items-center text-xs font-bold">{c.abbr}</span>
                           <span className="font-semibold text-ink">{c.name}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 mono">{c.crew_size}</td>
                       <td className="px-4 py-3 mono">{a}</td>
                       <td className="px-4 py-3 mono">{p}</td>
                       <td className="px-4 py-3 mono">{d30}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1 text-am-700">
-                          <IconStar size={13} />
-                          <span className="mono font-bold">{c.rating}</span>
-                        </div>
-                      </td>
                     </tr>
                   );
                 })}
@@ -164,31 +205,42 @@ export function AdminPage() {
 
         <div className="card p-4">
           <h4 className="mb-3">All defects</h4>
-          <DefectMap defects={defects} height={340} />
+          <DefectMap defects={defects} height={340} legend={false} />
         </div>
       </div>
 
-      {/* Pending triage list */}
-      {pending.length > 0 && (
-        <div className="card">
-          <div className="card-head">
-            <h3 className="flex-1">Pending triage <span className="text-muted font-normal text-sm">— {pending.length}</span></h3>
-          </div>
-          <div className="divide-y divide-border">
-            {pending.slice(0, 8).map(d => (
-              <Link key={d.id} to={`/defect/${d.id}`} className="flex items-center gap-4 p-4 hover:bg-surface-2 hover:no-underline">
-                <span className="mono text-xs text-muted w-14">{d.id}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[14px] font-semibold text-ink truncate">{d.title}</div>
-                  <div className="text-[12px] text-muted truncate mt-0.5">{d.road} · {relativeTime(d.reported_at)}</div>
+    </main>
+  );
+}
+
+function ActionList({ title, empty, rows, cta, ctaCls, tone }: {
+  title: string; empty: string; rows: { d: Defect; meta: string }[]; cta: string; ctaCls: string; tone?: 'danger';
+}) {
+  return (
+    <div className={`card overflow-hidden ${tone === 'danger' ? '!border-rd-600' : ''}`}>
+      <div className="card-head">
+        <h3 className="flex-1 text-[17px]">{title}</h3>
+        <span className={`mono text-[11px] font-bold px-2 py-0.5 rounded-pill border ${rows.length ? 'bg-brand text-brand-ink border-brand' : 'bg-surface-2 text-muted border-border'}`}>{rows.length}</span>
+      </div>
+      {rows.length === 0 ? (
+        <div className="p-8 text-center text-[13px] text-muted">{empty}</div>
+      ) : (
+        <div className="divide-y divide-border">
+          {rows.map(({ d, meta }) => (
+            <Link key={d.id} to={`/defect/${d.id}`} className="flex items-center gap-3 px-5 py-3.5 hover:bg-surface-2 hover:no-underline">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[14px] font-semibold text-ink truncate">{d.title}</span>
+                  <SeverityChip level={d.severity} />
                 </div>
-                <SeverityChip level={d.severity} />
-                <StatusBadge status={d.status} />
-              </Link>
-            ))}
-          </div>
+                <div className="text-[12px] text-muted truncate mt-0.5">{d.id} · {meta}</div>
+                <SlaChip d={d} className="mt-1" />
+              </div>
+              <span className={`btn btn-sm ${ctaCls}`}>{cta}</span>
+            </Link>
+          ))}
         </div>
       )}
-    </main>
+    </div>
   );
 }

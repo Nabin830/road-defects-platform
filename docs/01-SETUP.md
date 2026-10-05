@@ -1,7 +1,7 @@
 # Local Setup
 
 ## Prerequisites
-- **Node.js 18 or newer** (check with `node --version`)
+- **Node.js 20 or newer** (check with `node --version`)
 - **npm 9+** (comes with Node)
 
 ## Install and run
@@ -27,7 +27,7 @@ Open http://localhost:5173
 | Command | What it does |
 |---|---|
 | `npm run dev` | Start Vite dev server on :5173 with HMR |
-| `npm run build` | Type-check + production build to `dist/` |
+| `npm run build` | Type-check + production build to `dist/`, then writes SEO files (per-page meta, robots.txt, sitemap.xml) |
 | `npm run preview` | Preview the production build on :4173 |
 | `npm run typecheck` | Run TypeScript compiler with no emit |
 
@@ -36,7 +36,7 @@ Open http://localhost:5173
 The app checks `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` at startup:
 
 - **Both set and valid** → Supabase mode: real auth, real data
-- **Missing or placeholders** → Demo mode: 14 seeded defects, in-memory changes
+- **Missing or placeholders** → Demo mode: starts empty, changes live in memory until you reload
 
 Demo mode is perfect for previewing the UI without any backend setup.
 In demo mode you can switch roles on the login page:

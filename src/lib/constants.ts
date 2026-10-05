@@ -1,6 +1,15 @@
-import type { DefectStatus, Severity, DefectType } from './types';
+import type { DefectStatus, Severity, DefectType, Role } from './types';
+
+/** What each role is called on screen (the database says citizen/contractor/admin). */
+export const ROLE_LABEL: Record<Role, string> = { citizen: 'Resident', contractor: 'Contractor', admin: 'Council' };
 
 export const ORANGE = { lat: -33.2839, lng: 149.0988 };
+/** Where reports are accepted: all of Australia (incl. Tasmania) while testing.
+ *  For Orange only use { north: -33.12, south: -33.48, west: 148.88, east: 149.30 }.
+ *  Must match in_council_area() in supabase/00-all-in-one.sql and 00-final.sql. */
+export const COUNCIL_AREA = { north: -9.0, south: -44.0, west: 112.0, east: 154.0 };
+export const inCouncilArea = (lat: number, lng: number) =>
+  lat <= COUNCIL_AREA.north && lat >= COUNCIL_AREA.south && lng >= COUNCIL_AREA.west && lng <= COUNCIL_AREA.east;
 
 export const TYPES: { id: DefectType; label: string }[] = [
   { id: 'pothole',  label: 'Pothole' },
@@ -22,9 +31,9 @@ export const STATUS: Record<DefectStatus, { label: string; cls: string; color: s
 };
 
 export const SEVERITY: Record<Severity, { label: string; color: string; rank: number; sla: string }> = {
-  low:      { label: 'Low',      color: '#16A34A', rank: 1, sla: '20 business days' },
-  medium:   { label: 'Medium',   color: '#EAB308', rank: 2, sla: '10 business days' },
-  high:     { label: 'High',     color: '#EA580C', rank: 3, sla: '5 business days' },
+  low:      { label: 'Low',      color: '#16A34A', rank: 1, sla: '10 days' },
+  medium:   { label: 'Medium',   color: '#EAB308', rank: 2, sla: '7 days' },
+  high:     { label: 'High',     color: '#EA580C', rank: 3, sla: '3–5 days' },
   critical: { label: 'Critical', color: '#DC2626', rank: 4, sla: '24 hours' },
 };
 

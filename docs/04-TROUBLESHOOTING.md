@@ -2,7 +2,7 @@
 
 ## "npm install" is slow or fails
 
-- Make sure you have Node 18+ (`node --version`)
+- Make sure you have Node 20+ (`node --version`)
 - Try `npm install --legacy-peer-deps` if you see peer-dep warnings
 - Clear the cache: `npm cache clean --force && rm -rf node_modules package-lock.json && npm install`
 
@@ -29,12 +29,18 @@ The app runs in demo mode when credentials aren't set. Either:
 
 ## Map is invisible or 0px tall
 
-- Verify Leaflet CSS is imported (should already be in `src/main.tsx`)
+- Verify Leaflet CSS is imported (it's at the top of `src/components/LeafletMap.tsx`)
 - Force a resize: the map calls `invalidateSize()` on mount, but if it's inside a hidden tab you may need to trigger it again
+
+## A report or update is refused with a message
+
+The database enforces RoadFix's rules, so messages like "Please wait a minute before sending another report",
+"This was already reported within 150 m in the last hour" or "A photo of the finished repair is required" are
+expected — they explain what to do. If you see "You can't change: …", the account's role isn't allowed to make that change.
 
 ## "Row-level security policy violation" from Supabase
 
-Your user's profile role doesn't match what the endpoint expects. Run `04-link-users.sql` again after creating the demo users.
+Your user's profile role doesn't match what the endpoint expects. Set the right role on the profile, e.g. `update public.profiles set role = 'admin' where lower(email) = 'council@gmail.com';`, then log out and back in.
 
 ## TypeScript errors on build
 

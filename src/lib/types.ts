@@ -1,3 +1,8 @@
+import type { PhotoMeta } from './evidence';
+
+/** Photo details saved with a report or timeline photo; photo_flags is set by the database. */
+export type PhotoInfo = Partial<PhotoMeta> & { photo_flags?: string[] | null };
+
 // ─── Enums / literal types ───────────────────────────────────────────
 export type Role = 'citizen' | 'contractor' | 'admin';
 export type Severity = 'low' | 'medium' | 'high' | 'critical';
@@ -29,7 +34,7 @@ export interface Contractor {
   created_at: string;
 }
 
-export interface Defect {
+export interface Defect extends PhotoInfo {
   id: string;
   title: string;
   description: string;
@@ -48,6 +53,10 @@ export interface Defect {
   reject_reason: string | null;
   reported_by: string | null;
   contractor_id: string | null;
+  accepted_at?: string | null;
+  verified_at?: string | null;
+  work_instructions?: string | null;   // council's work order: what the contractor must do
+  due_at?: string | null;              // council-set fix-by date (overrides the severity default)
   reported_at: string;
   updated_at: string;
   // Derived
@@ -55,7 +64,7 @@ export interface Defect {
   mine: boolean;
 }
 
-export interface RepairUpdate {
+export interface RepairUpdate extends PhotoInfo {
   id: string;
   defect_id: string;
   action: string;
@@ -99,26 +108,21 @@ export interface CreateDefectInput {
   latitude: number;
   longitude: number;
   photo_url?: string | null;
+  photo?: PhotoMeta | null;
 }
 
 export interface PlatformStats {
   totalReported: number;
   totalCompleted: number;
   closureRate: number;      // 0-100
-  avgDaysToFirstAction: number;
+  inProgress: number;       // assigned, in progress, or awaiting council sign-off
   activeResidents: number;
 }
 
 // ─── Analytics shape ──────────────────────────────────────────────────
-export interface AdminStats {
-  total: number;
-  byStatus: Record<DefectStatus, number>;
-  bySeverity: Record<Severity, number>;
-  contractors: Contractor[];
-}
 
 // ─── Supabase row types (database shape, before mapping) ─────────────
-export interface DBDefect {
+export interface DBDefect extends PhotoInfo {
   id: string;
   title: string;
   description: string;
@@ -137,6 +141,27 @@ export interface DBDefect {
   reject_reason: string | null;
   reported_by: string | null;
   contractor_id: string | null;
+  accepted_at?: string | null;
+  verified_at?: string | null;
+  work_instructions?: string | null;   // council's work order: what the contractor must do
+  due_at?: string | null;              // council-set fix-by date (overrides the severity default)
   reported_at: string;
   updated_at: string;
+}
+
+// ─── In-app notifications ─────────────────────────────────────────────
+export type NotificationKind =
+  | 'report' | 'assigned' | 'accepted' | 'declined' | 'progress'
+  | 'complete' | 'verified' | 'rework' | 'rejected' | 'update';
+
+export interface AppNotification {
+  id: string;
+  user_id: string;
+  defect_id: string | null;
+  defect_title: string | null;
+  kind: NotificationKind;
+  title: string;
+  body: string | null;
+  read_at: string | null;
+  created_at: string;
 }

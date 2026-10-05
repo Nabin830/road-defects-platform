@@ -1,3 +1,20 @@
+/** A readable message from anything that was thrown (Error, Supabase error object, string…). */
+export function errorMessage(err: unknown, fallback = 'Please try again.'): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === 'object' && err && 'message' in err && typeof (err).message === 'string') {
+    return (err as { message: string }).message || fallback;
+  }
+  return typeof err === 'string' && err ? err : fallback;
+}
+
+/** Photo links come from the database, so never trust them blindly: only web, blob and same-site
+ *  addresses are used — a "javascript:" link would otherwise run code when someone clicks the photo. */
+export function safePhotoUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const u = url.trim();
+  return /^(https?:\/\/|blob:|\/(?!\/))/i.test(u) ? u : null;
+}
+
 export function relativeTime(iso: string): string {
   const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
   if (s < 60) return 'just now';
@@ -27,4 +44,12 @@ export function newDefectId(): string {
   const t = Math.floor(Date.now() / 1000).toString(36).toUpperCase();
   const r = Math.random().toString(36).slice(2, 5).toUpperCase();
   return `RD-${t}${r}`;
+}
+
+/** Distance in metres between two lat/lng points. */
+export function metres(aLat: number, aLng: number, bLat: number, bLng: number) {
+  const R = 6371000, r = Math.PI / 180;
+  const dLat = (bLat - aLat) * r, dLng = (bLng - aLng) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * r) * Math.cos(bLat * r) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
 }

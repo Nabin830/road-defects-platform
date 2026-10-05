@@ -9,11 +9,12 @@ export const HAS_SUPABASE = Boolean(
   !key.includes('YOUR_ANON')
 );
 
+// The project has no generated database types, so the client is untyped; the data layer (api.ts) types each result
+// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 export const supabase: SupabaseClient = HAS_SUPABASE
-  ? createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true } })
+  ? createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' } })
   : (createClient('https://placeholder.supabase.co', 'placeholder', { auth: { persistSession: false } }));
 
 if (!HAS_SUPABASE) {
-  // eslint-disable-next-line no-console
   console.info('[Supabase] Not configured — running in demo mode. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local');
 }
