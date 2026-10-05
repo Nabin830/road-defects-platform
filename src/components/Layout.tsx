@@ -134,6 +134,7 @@ const KIND_STYLE: Record<NotificationKind, { icon: ComponentType<{ size?: number
   verified: { icon: IconCheckCircle, cls: 'bg-em-50 text-em-700' },
   rework:   { icon: IconAlert,       cls: 'bg-am-50 text-am-700' },
   rejected: { icon: IconAlert,       cls: 'bg-rd-50 text-rd-700' },
+  reopen:   { icon: IconAlert,       cls: 'bg-rd-50 text-rd-700' },
   update:   { icon: IconBell,        cls: 'bg-surface-2 text-muted' },
 };
 

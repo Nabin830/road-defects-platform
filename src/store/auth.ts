@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { HAS_SUPABASE, supabase } from '../lib/supabase';
 import { api } from '../lib/api';
+import { clearCopies } from '../lib/cache';
 import type { Profile, Role } from '../lib/types';
 
 interface AuthState {
@@ -10,9 +11,9 @@ interface AuthState {
   role: Role;                    // best-effort — 'citizen' when signed out
   demoRole: Role;                // used when Supabase not configured
   init: () => Promise<void>;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string, captchaToken?: string) => Promise<void>;
   /** Creates the account and signs it in. No emails are sent (Supabase "Confirm email" must be OFF). */
-  signUp: (email: string, password: string, name: string, role: Role) => Promise<void>;
+  signUp: (email: string, password: string, name: string, role: Role, captchaToken?: string) => Promise<void>;
   signOut: () => Promise<void>;
   /** Re-read the signed-in user's profile (role, contractor link) from the database. */
   /** `force` skips the once-a-minute limit (e.g. right after saving the profile). */
@@ -117,8 +118,8 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
   },
 
-  async signIn(email, password) {
-    await api.signIn({ email, password });
+  async signIn(email, password, captchaToken) {
+    await api.signIn({ email, password, captchaToken });
     // onAuthStateChange will fire, but wait a tick and force refresh just in case
     const { data } = await supabase.auth.getSession();
     if (data.session) {
@@ -128,8 +129,8 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
   },
 
-  async signUp(email, password, name, role) {
-    const result = await api.signUp({ email, password, name, role });
+  async signUp(email, password, name, role, captchaToken) {
+    const result = await api.signUp({ email, password, name, role, captchaToken });
     let session = result.session;
     if (!session) {
       // No session back usually means Supabase still has "Confirm email" switched on
@@ -159,6 +160,9 @@ export const useAuth = create<AuthState>((set, get) => ({
 
   async signOut() {
     rememberProfile(null);
+    clearCopies();
+    // This phone shouldn't keep getting the signed-out person's notifications
+    await import('../lib/push').then(m => m.disablePush()).catch(() => {});
     await api.signOut();
     set({ userId: null, profile: null, authed: false, role: get().demoRole, offlineSession: false });
   },

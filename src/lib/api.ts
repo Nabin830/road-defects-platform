@@ -43,7 +43,7 @@ const DEMO_KIND: Record<string, NotificationKind> = {
   'Report submitted': 'report', 'Assigned': 'assigned', 'Contractor accepted': 'accepted',
   'Contractor declined': 'declined', 'Work started': 'progress', 'Progress update': 'progress',
   'Repair complete': 'complete', 'Verified by council': 'verified', 'Rework requested': 'rework',
-  'Report rejected': 'rejected',
+  'Report rejected': 'rejected', 'Reopen requested': 'reopen',
 };
 let demoReadIds = new Set<string>();
 function demoNotifications(userId: string): AppNotification[] {
@@ -68,6 +68,15 @@ const demoFollows = new Set<string>();    // `${defectId}:${userId}`
 /** Supabase returns at most 1,000 rows per request by default — fetch page by page so
  *  lists, maps and council reports never silently miss rows once the program grows. */
 const PAGE = 1000;
+
+/** Phone notifications are sent by the "push" Edge Function. After anything that creates
+ *  notifications, nudge it (once, shortly after) — it only ever sends real, unsent ones. */
+let pushTimer: ReturnType<typeof setTimeout> | null = null;
+export function pokePush() {
+  if (!HAS_SUPABASE || !import.meta.env.VITE_VAPID_PUBLIC_KEY) return;
+  if (pushTimer) clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => { void supabase.functions.invoke('push', { body: {} }).catch(() => {}); }, 1500);
+}
 async function fetchAll<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
   const out: T[] = [];
   for (let from = 0; ; from += PAGE) {
@@ -90,7 +99,10 @@ export const api = {
       email: input.email,
       password: input.password,
       // Leave suburb out when empty, so the profile stores "no suburb" rather than a blank string
-      options: { data: { name: input.name, role: input.role || 'citizen', ...(input.suburb?.trim() ? { suburb: input.suburb.trim() } : {}) } },
+      options: {
+        data: { name: input.name, role: input.role || 'citizen', ...(input.suburb?.trim() ? { suburb: input.suburb.trim() } : {}) },
+        captchaToken: input.captchaToken,
+      },
     });
     if (error) throw error;
     return data;
@@ -98,7 +110,9 @@ export const api = {
 
   async signIn(input: SignInInput) {
     if (!HAS_SUPABASE) throw new Error('Configure Supabase to sign in (see README).');
-    const { data, error } = await supabase.auth.signInWithPassword(input);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: input.email, password: input.password, options: { captchaToken: input.captchaToken },
+    });
     if (error) throw error;
     return data;
   },
@@ -291,14 +305,17 @@ export const api = {
   },
 
   /** Contractor finishes a job — a photo of the finished repair is required. Photo update + status change in one step. */
-  async completeJob(id: string, note: string, photoUrl: string, photo: PhotoMeta, actorId: string): Promise<void> {
+  async completeJob(id: string, note: string, photoUrl: string, photo: PhotoMeta, actorId: string, offline = false): Promise<void> {
     if (!HAS_SUPABASE) {
       await this.addUpdate(id, { action: 'Repair complete', note: note || 'Site cleared. Waiting for council to verify.', progress: 100, photo_url: photoUrl, photo }, actorId, 'contractor');
       await this.updateDefect(id, { status: 'completed', progress: 100 });
       return;
     }
-    const { error } = await supabase.rpc('complete_job', { p_defect_id: id, p_note: note, p_photo_url: photoUrl, p_photo: photo });
+    const { error } = await supabase.rpc('complete_job', {
+      p_defect_id: id, p_note: note, p_photo_url: photoUrl, p_photo: { ...photo, captured_offline: offline },
+    });
     if (error) throw error;
+    pokePush();
   },
 
   /** Contractor turns the job down — it goes back to the council as unassigned. */
@@ -310,6 +327,7 @@ export const api = {
     }
     const { error } = await supabase.rpc('decline_assignment', { p_defect_id: id, p_reason: reason });
     if (error) throw error;
+    pokePush();
   },
 
   /** Council regrades a report during triage; logged on the timeline. */
@@ -336,6 +354,57 @@ export const api = {
     await this.addUpdate(id, { action: 'Report rejected', note: reason, progress: 0 }, actorId, 'admin');
   },
 
+  /** Council merges a duplicate into the original: backing and followers move over, the duplicate closes. */
+  async mergeDefects(fromId: string, intoId: string): Promise<void> {
+    if (!HAS_SUPABASE) throw new Error('Configure Supabase to merge reports.');
+    const { error } = await supabase.rpc('merge_defects', { p_from: fromId, p_into: intoId });
+    if (error) throw error;
+    pokePush();
+  },
+
+  /** Council takes a report photo off the public page (faces, number plates), or puts it back. */
+  async hidePhoto(id: string, reason: string): Promise<void> {
+    if (!HAS_SUPABASE) throw new Error('Configure Supabase to hide photos.');
+    const { error } = await supabase.rpc('hide_report_photo', { p_defect_id: id, p_reason: reason });
+    if (error) throw error;
+  },
+  async showPhoto(id: string): Promise<void> {
+    if (!HAS_SUPABASE) throw new Error('Configure Supabase to show photos.');
+    const { error } = await supabase.rpc('show_report_photo', { p_defect_id: id });
+    if (error) throw error;
+  },
+  /** The hidden photo — only council and the reporter get it back. */
+  async getHiddenPhoto(id: string): Promise<{ photo_url: string | null; photo_flags: string[]; reason: string | null } | null> {
+    if (!HAS_SUPABASE) return null;
+    const { data } = await supabase.from('hidden_photos').select('photo_url, photo_flags, reason').eq('defect_id', id).maybeSingle<{ photo_url: string; photo_flags: string[]; reason: string | null }>();
+    return data ? { ...data, photo_url: safePhotoUrl(data.photo_url) } : null;
+  },
+
+  /** A resident says a verified repair isn't fixed (within 7 days, with a photo). */
+  async requestReopen(id: string, note: string, photoUrl: string, photo: PhotoMeta): Promise<void> {
+    if (!HAS_SUPABASE) throw new Error('Configure Supabase to reopen repairs.');
+    const { error } = await supabase.rpc('request_reopen', { p_defect_id: id, p_note: note, p_photo_url: photoUrl, p_photo: photo });
+    if (error) throw error;
+    pokePush();
+  },
+
+  /** Council decides the repair is fine after all — the request is closed with a reason. */
+  async dismissReopen(id: string, note: string, actorId: string): Promise<void> {
+    await this.updateDefect(id, { reopen_requested_at: null });
+    await this.addUpdate(id, { action: 'Reopen declined', note }, actorId, 'admin');
+  },
+
+  /* ── phone notifications ────────────────────────────────────── */
+  async savePushSubscription(sub: PushSubscriptionJSON): Promise<void> {
+    const { error } = await supabase.rpc('save_push_subscription', {
+      p_endpoint: sub.endpoint, p_p256dh: sub.keys?.p256dh, p_auth: sub.keys?.auth,
+    });
+    if (error) throw error;
+  },
+  async removePushSubscription(endpoint: string): Promise<void> {
+    await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint);
+  },
+
   /* ── updates ────────────────────────────────────────────────── */
   async listUpdates(defectId: string): Promise<RepairUpdate[]> {
     if (!HAS_SUPABASE) return demoUpdates[defectId] || [];
@@ -346,7 +415,7 @@ export const api = {
 
   async addUpdate(
     defectId: string,
-    body: { action: string; note?: string; progress?: number | null; photo_url?: string | null; photo?: PhotoMeta | null },
+    body: { action: string; note?: string; progress?: number | null; photo_url?: string | null; photo?: PhotoMeta | null; offline?: boolean },
     actorId: string,
     actorRole: 'citizen' | 'contractor' | 'admin' | null,
   ): Promise<void> {
@@ -372,11 +441,13 @@ export const api = {
       progress: body.progress ?? null,
       photo_url: body.photo_url ?? null,
       ...body.photo,
+      ...(body.offline ? { captured_offline: true } : {}),
       actor_id: actorId,
       actor_role: actorRole,
     };
     const { error } = await supabase.from('repair_updates').insert(row);
     if (error) throw error;
+    pokePush();
     if (typeof body.progress === 'number') {
       await supabase.from('defects').update({ progress: body.progress }).eq('id', defectId);
     }
@@ -485,15 +556,16 @@ export const api = {
   },
 
   /** Timeline entries used by the council reports (assignment and completion times). */
-  async listMilestones(): Promise<Pick<RepairUpdate, 'defect_id' | 'action' | 'created_at'>[]> {
+  async listMilestones(): Promise<Pick<RepairUpdate, 'defect_id' | 'action' | 'created_at' | 'actor_id'>[]> {
+    const actions = ['Assigned', 'Repair complete', 'Rework requested', 'Contractor declined'];
     if (!HAS_SUPABASE) {
       return Object.values(demoUpdates).flat()
-        .filter(u => u.action === 'Assigned' || u.action === 'Repair complete')
-        .map(({ defect_id, action, created_at }) => ({ defect_id, action, created_at }));
+        .filter(u => actions.includes(u.action))
+        .map(({ defect_id, action, created_at, actor_id }) => ({ defect_id, action, created_at, actor_id }));
     }
-    return fetchAll<Pick<RepairUpdate, 'defect_id' | 'action' | 'created_at'>>((from, to) =>
-      supabase.from('repair_updates').select('defect_id, action, created_at')
-        .in('action', ['Assigned', 'Repair complete']).order('created_at', { ascending: true }).order('id').range(from, to));
+    return fetchAll<Pick<RepairUpdate, 'defect_id' | 'action' | 'created_at' | 'actor_id'>>((from, to) =>
+      supabase.from('repair_updates').select('defect_id, action, created_at, actor_id')
+        .in('action', actions).order('created_at', { ascending: true }).order('id').range(from, to));
   },
 
   /* ── notifications (header bell) ─────────────────────────────── */

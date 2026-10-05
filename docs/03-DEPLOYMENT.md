@@ -24,7 +24,8 @@ report) and absolute social-preview image links. Without it the site still works
 1. Push the repo to GitHub
 2. Import at https://vercel.com/new
 3. Framework preset: **Vite** (auto-detected)
-4. Add environment variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_SITE_URL`
+4. Add environment variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_SITE_URL`, and optionally
+   `VITE_TURNSTILE_SITE_KEY` (robot check) and `VITE_VAPID_PUBLIC_KEY` (phone notifications) — see `docs/02-SUPABASE.md`
 5. Deploy
 
 `vercel.json` already sends every page address to the app, sets long-term caching for the build's files, and

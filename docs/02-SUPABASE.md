@@ -181,3 +181,37 @@ What no website can fully prevent: someone who rewrites the app on their own dev
 GPS, times and photo fingerprints. That's why council sees how every photo was taken, and why repairs
 are verified by council before a report is closed.
 
+## Robot check on sign-up and sign-in (recommended)
+
+Stops one person scripting hundreds of fake accounts to get around the spam limits. Free.
+
+1. Go to [Cloudflare Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile), click **Add site**,
+   enter your site's domain (and `localhost` for testing), choose **Managed**. Copy the **Site key** and **Secret key**.
+2. Supabase → **Authentication → Attack Protection → Enable CAPTCHA protection** → provider **Turnstile** →
+   paste the **Secret key** → Save.
+3. Add `VITE_TURNSTILE_SITE_KEY=<site key>` to `.env.local` and to Vercel's Environment Variables, then redeploy.
+
+Do steps 2 and 3 together: with only step 2, nobody can sign in; with only step 3, the check is shown but not enforced.
+
+## Phone notifications (optional)
+
+Residents and contractors can turn on notifications under **Profile & settings**. On iPhone they must first add
+RoadFix to the home screen. Setup, once, from the project folder:
+
+```bash
+npx web-push generate-vapid-keys          # prints a public and a private key
+npx supabase login
+npx supabase link --project-ref <your project ref>
+npx supabase secrets set VAPID_PUBLIC_KEY=<public> VAPID_PRIVATE_KEY=<private> VAPID_SUBJECT=mailto:<your email>
+npx supabase functions deploy push
+```
+
+Then add `VITE_VAPID_PUBLIC_KEY=<public>` to `.env.local` and Vercel, and redeploy. Until this is done the
+Profile page says notifications aren't set up, and the bell in the app still works as before.
+
+## Service area
+
+Reports are accepted only inside the Orange City Council area. To test from somewhere else, widen both
+`COUNCIL_AREA` in `src/lib/constants.ts` and `in_council_area()` in `supabase/Database.sql` (the all-of-Australia
+values are in the comments next to them), and put them back before going live.
+

@@ -73,3 +73,13 @@ export function metres(aLat: number, aLng: number, bLat: number, bLng: number) {
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * r) * Math.cos(bLat * r) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
+
+/** Turn-by-turn directions to a spot — opens the Google Maps app when installed (Android and iPhone), otherwise the website. */
+export function directionsUrl(lat: number, lng: number): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+}
+
+/** "350 m" / "4.2 km" */
+export function distanceLabel(m: number): string {
+  return m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(m < 10000 ? 1 : 0)} km`;
+}

@@ -49,6 +49,19 @@ Every rule is enforced in Postgres (row-level security + triggers), not just in 
   reports only inside the Orange council area, text length limits
 - Each role can only change what the app lets it change (no fake votes, severities, dates or council entries)
 - Fix-by targets: critical 1 day, high 3–5 days, medium 7, low 10 (or council's own date when assigning)
+- "Not fixed" reopen requests: only by the reporter or a backer, within 7 days of verification, with their own
+  photo, one open request per report, 3 a day per person
+- Council-only: hide a report photo from the public (it moves to a table only council and the reporter can read),
+  merge duplicates (backing and followers move to the original)
+- Phone notifications are sent only by the server, only for real notifications, each once
+
+## What each role gets
+
+- **Residents:** report (online or offline), back and follow reports, phone notifications, "Not fixed?" after a repair
+- **Council:** triage list in priority order with bulk assign/reject, merge duplicates, hide photos, handle
+  "not fixed" requests, contractor scorecard (overdue, on time, turnaround, sent back, declined)
+- **Contractors:** jobs nearest first, Navigate button, before photo shown when taking the after photo, and
+  accept / start / progress / complete with no signal (sent when back online)
 
 ## Stack
 

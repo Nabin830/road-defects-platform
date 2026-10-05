@@ -16,6 +16,7 @@ export default defineConfig({
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/(sitemap\.xml|robots\.txt)$/],
         cleanupOutdatedCaches: true,
+        importScripts: ['push-sw.js'],       // phone notifications (public/push-sw.js)
         // Map tiles are not cached: browsers count each one as several MB of storage, which could
         // crowd out reports waiting in the offline outbox. The map is simply blank offline.
       },

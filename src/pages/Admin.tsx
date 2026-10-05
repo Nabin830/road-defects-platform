@@ -6,22 +6,28 @@ import { StatCard } from '../components/StatCard';
 import { SeverityChip } from '../components/Severity';
 import { IconChart, IconUsers, IconAlert, IconClock, IconDownload } from '../lib/icons';
 import { STATUS, SEVERITY } from '../lib/constants';
-import { relativeTime } from '../lib/utils';
+import { errorMessage, relativeTime } from '../lib/utils';
 import { useUI } from '../store/ui';
-import { slaStatus, dueDate } from '../lib/sla';
+import { useAuth } from '../store/auth';
+import { slaStatus, dueDate, DEFAULT_FIX_DAYS } from '../lib/sla';
+import { byPriority, priorityOf } from '../lib/priority';
 import { SlaChip } from '../components/SlaChip';
 import type { Defect, Contractor, DefectStatus, Severity as Sev } from '../lib/types';
 import { useSeo } from '../lib/seo';
 
 export function AdminPage() {
   useSeo({ title: 'Council overview', noindex: true });
-  const { toast } = useUI();
+  const { toast, openModal, closeModal } = useUI();
+  const userId = useAuth(st => st.userId);
   const [defects, setDefects] = useState<Defect[]>([]);
   const [contractors, setContractors] = useState<Contractor[]>([]);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
 
+  const load = () => api.listDefects({}).then(setDefects).catch(() => toast('error', "Couldn't load reports", 'Check your connection, then refresh the page.'));
   useEffect(() => {
-    api.listDefects({}).then(setDefects).catch(() => toast('error', "Couldn't load reports", 'Check your connection, then refresh the page.'));
+    void load();
     api.listContractors().then(setContractors).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toast]);
 
   const total = defects.length;
@@ -29,7 +35,44 @@ export function AdminPage() {
   const bySeverity: Record<Sev, number> = { low: 0, medium: 0, high: 0, critical: 0 };
   for (const d of defects) { byStatus[d.status]++; bySeverity[d.severity]++; }
 
-  const pending = defects.filter(d => d.status === 'pending');
+  const pending = defects.filter(d => d.status === 'pending').sort(byPriority);
+  const notFixed = defects.filter(d => priorityOf(d).reasons.includes('resident says not fixed'));
+  const chosen = pending.filter(d => picked.has(d.id));
+  const toggle = (id: string) => setPicked(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  /** Runs one action over every chosen report, then says how many worked. */
+  async function bulk(label: string, fn: (d: Defect) => Promise<void>) {
+    let ok = 0;
+    const failed: string[] = [];
+    for (const d of chosen) {
+      try { await fn(d); ok++; }
+      catch (err) { failed.push(`${d.id}: ${errorMessage(err, 'failed')}`); }
+    }
+    closeModal();
+    setPicked(new Set());
+    await load();
+    if (failed.length) toast('error', `${label}: ${ok} done, ${failed.length} failed`, failed.slice(0, 3).join(' · '));
+    else toast('success', `${label}: ${ok} report${ok === 1 ? '' : 's'}`, 'Each one is logged on its timeline.');
+  }
+
+  function openBulkAssign() {
+    openModal(<BulkAssignModal count={chosen.length} contractors={contractors} onCancel={closeModal}
+      onAssign={(cId, instructions, days) => bulk('Assigned', async (d) => {
+        const n = days ?? DEFAULT_FIX_DAYS[d.severity];
+        const due = new Date(Date.now() + n * 86400000);
+        await api.assignDefect(d.id, cId, instructions, due.toISOString());
+        const who = contractors.find(c => c.id === cId)?.name || cId;
+        await api.addUpdate(d.id, {
+          action: 'Assigned',
+          note: `Assigned to ${who}. Fix within ${n} day${n === 1 ? '' : 's'} (by ${due.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}).\nWork to do: ${instructions}`,
+        }, userId!, 'admin');
+      })} />);
+  }
+
+  function openBulkReject() {
+    openModal(<BulkRejectModal count={chosen.length} onCancel={closeModal}
+      onReject={(reason) => bulk('Rejected', d => api.rejectDefect(d.id, reason, userId!))} />);
+  }
   const toVerify = defects.filter(d => d.status === 'completed' && !d.verified_at);
   const overdue = defects.filter(d => slaStatus(d)?.overdue);
   const dueSoon = defects.filter(d => slaStatus(d)?.soon);
@@ -99,15 +142,61 @@ export function AdminPage() {
         </div>
       )}
 
-      {/* What council needs to act on */}
-      <div className="grid lg:grid-cols-2 gap-5 mb-8">
-        <ActionList
-          title="New reports to triage"
-          empty="No new reports waiting."
-          rows={pending.slice(0, 8).map(d => ({ d, meta: `${d.road} · reported ${relativeTime(d.reported_at)}` }))}
-          cta="Assign"
-          ctaCls="btn-primary"
-        />
+      {notFixed.length > 0 && (
+        <div className="mb-5">
+          <ActionList
+            title="Residents say these aren't fixed"
+            empty=""
+            rows={notFixed.map(d => ({ d, meta: `${d.road} · verified ${relativeTime(d.verified_at!)}` }))}
+            cta="Check"
+            ctaCls="btn-danger"
+            tone="danger"
+          />
+        </div>
+      )}
+
+      {/* New reports, most urgent first, with bulk actions */}
+      <div className="card overflow-hidden mb-5">
+        <div className="card-head flex-wrap gap-2">
+          <h3 className="flex-1 text-[17px]">New reports to triage <span className="text-[12.5px] font-normal text-muted">· most urgent first</span></h3>
+          {chosen.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              <button className="btn btn-sm btn-primary" onClick={openBulkAssign}>Assign {chosen.length}…</button>
+              <button className="btn btn-sm btn-danger" onClick={openBulkReject}>Reject {chosen.length}…</button>
+              <button className="btn btn-sm btn-ghost" onClick={() => setPicked(new Set())}>Clear</button>
+            </div>
+          ) : pending.length > 0 && (
+            <button className="btn btn-sm btn-ghost" onClick={() => setPicked(new Set(pending.map(d => d.id)))}>Select all {pending.length}</button>
+          )}
+        </div>
+        {pending.length === 0 ? (
+          <div className="p-8 text-center text-[13px] text-muted">No new reports waiting.</div>
+        ) : (
+          <div className="divide-y divide-border max-h-[560px] overflow-y-auto">
+            {pending.map(d => {
+              const p = priorityOf(d);
+              return (
+                <div key={d.id} className={`flex items-center gap-3 px-5 py-3 ${picked.has(d.id) ? 'bg-brand-soft' : 'hover:bg-surface-2'}`}>
+                  <input type="checkbox" className="w-4 h-4 accent-brand flex-none" checked={picked.has(d.id)} onChange={() => toggle(d.id)}
+                         aria-label={`Select ${d.id}`} />
+                  <span className="mono text-[12px] font-bold w-9 text-center flex-none" title="Priority score">{p.score}</span>
+                  <Link to={`/defect/${d.id}`} className="flex-1 min-w-0 hover:no-underline">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[14px] font-semibold text-ink truncate">{d.title}</span>
+                      <SeverityChip level={d.severity} />
+                    </div>
+                    <div className="text-[12px] text-muted truncate mt-0.5">
+                      {d.id} · {d.road} · reported {relativeTime(d.reported_at)}{p.reasons.length ? ` · ${p.reasons.join(', ')}` : ''}
+                    </div>
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="grid lg:grid-cols-1 gap-5 mb-8">
         <ActionList
           title="Repairs awaiting verification"
           empty="No finished repairs to check."
@@ -242,5 +331,82 @@ function ActionList({ title, empty, rows, cta, ctaCls, tone }: {
         </div>
       )}
     </div>
+  );
+}
+
+function BulkAssignModal({ count, contractors, onAssign, onCancel }: {
+  count: number; contractors: Contractor[];
+  onAssign: (contractorId: string, instructions: string, days: number | null) => Promise<void> | void; onCancel: () => void;
+}) {
+  const [selected, setSelected] = useState('');
+  const [instructions, setInstructions] = useState('');
+  const [days, setDays] = useState('');
+  const [busy, setBusy] = useState(false);
+  const n = days.trim() ? Math.floor(Number(days)) : null;
+  const daysOk = n === null || (Number.isFinite(n) && n >= 1 && n <= 365);
+  const ready = !!selected && instructions.trim().length >= 10 && daysOk;
+  return (
+    <>
+      <header className="p-5 pb-0"><h3>Assign {count} report{count === 1 ? '' : 's'}</h3></header>
+      <div className="p-4 px-5 pt-3 max-h-[70vh] overflow-y-auto grid gap-4">
+        <div className="grid gap-1.5">
+          <label className="label" htmlFor="bulk-wo">What needs to be done? <span className="text-rd-600">*</span></label>
+          <textarea id="bulk-wo" className="textarea" maxLength={2000} value={instructions} onChange={(e) => setInstructions(e.target.value)}
+                    placeholder="e.g. Patch each pothole with hot-mix asphalt and upload before/after photos." />
+          <span className="text-[11.5px] text-muted">The same work order goes on every report you picked.</span>
+        </div>
+        <div className="grid gap-1.5">
+          <label className="label" htmlFor="bulk-days">Days to fix</label>
+          <input id="bulk-days" type="number" min={1} max={365} inputMode="numeric" className="input !w-28" value={days}
+                 onChange={(e) => setDays(e.target.value)} placeholder="Standard" />
+          <span className={`text-[12px] ${daysOk ? 'text-muted' : 'text-rd-600'}`}>
+            {daysOk ? 'Leave empty to use each report\'s standard target for its severity.' : 'Enter a number of days between 1 and 365.'}
+          </span>
+        </div>
+        <div>
+          <p className="label mb-2">Contractor <span className="text-rd-600">*</span></p>
+          <div className="grid gap-2">
+            {contractors.length === 0 && <div className="card p-4 text-[13px] text-muted">No contractors yet.</div>}
+            {contractors.map(c => (
+              <label key={c.id} className={`card p-3 flex items-center gap-3 cursor-pointer ${selected === c.id ? 'border-brand bg-brand-soft' : ''}`}>
+                <input type="radio" name="bulk-con" checked={selected === c.id} onChange={() => setSelected(c.id)} className="accent-brand" />
+                <span className="flex-1 text-[13.5px] font-semibold">{c.name}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+      <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
+        <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+        <button className="btn btn-primary" disabled={!ready || busy}
+                onClick={async () => { if (!ready) return; setBusy(true); await onAssign(selected, instructions.trim(), n); setBusy(false); }}>
+          {busy ? 'Assigning…' : `Assign ${count}`}
+        </button>
+      </footer>
+    </>
+  );
+}
+
+function BulkRejectModal({ count, onReject, onCancel }: { count: number; onReject: (reason: string) => Promise<void> | void; onCancel: () => void }) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  return (
+    <>
+      <header className="p-5 pb-0"><h3>Reject {count} report{count === 1 ? '' : 's'}</h3></header>
+      <div className="p-4 px-5 pt-3">
+        <p className="text-[13.5px] text-muted mb-3">Each reporter sees this reason. For duplicates, open the report and use "Merge as duplicate" instead, so the backing isn't lost.</p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {['Outside council boundary', 'Not a defect (works underway)', 'Insufficient information', 'Spam or test report'].map(r => (
+            <button key={r} onClick={() => setReason(r)} className="chip">{r}</button>
+          ))}
+        </div>
+        <textarea className="textarea" maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Explain why…" />
+      </div>
+      <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
+        <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+        <button className="btn btn-danger" disabled={!reason.trim() || busy}
+                onClick={async () => { if (!reason.trim()) return; setBusy(true); await onReject(reason.trim()); setBusy(false); }}>{busy ? 'Rejecting…' : `Reject ${count}`}</button>
+      </footer>
+    </>
   );
 }

@@ -9,9 +9,11 @@ import { SeverityChip } from '../components/Severity';
 import { Timeline } from '../components/Timeline';
 import { PhotoField } from '../components/PhotoField';
 import { Photo, PhotoMissing } from '../components/Photo';
-import { IconArrow, IconStar, IconWrench, IconCheck, IconAlert, IconLeft } from '../lib/icons';
+import { IconArrow, IconStar, IconWrench, IconCheck, IconAlert, IconLeft, IconMap, IconEye } from '../lib/icons';
 import { typeOf, SEVERITY } from '../lib/constants';
-import { fmt, errorMessage } from '../lib/utils';
+import { fmt, errorMessage, directionsUrl, distanceLabel, isNetworkError, metres } from '../lib/utils';
+import { readCopy, saveCopy } from '../lib/cache';
+import { saveJobStep, useOutbox, isJob, JOB_STEP_LABEL, type JobStep } from '../lib/outbox';
 import { slaStatus, dueDate, DEFAULT_FIX_DAYS } from '../lib/sla';
 import { SlaChip } from '../components/SlaChip';
 import type { Defect, RepairUpdate, Contractor, Severity as Sev } from '../lib/types';
@@ -36,6 +38,9 @@ export function DefectDetailPage() {
   const [following, setFollowing] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [savedAt, setSavedAt] = useState<string | null>(null);   // showing the copy saved on this phone
+  const [hidden, setHidden] = useState<{ photo_url: string | null; photo_flags: string[]; reason: string | null } | null>(null);
+  const outbox = useOutbox(st => st.items);
   useSeo(notFound ? { title: 'Report not found', noindex: true } : defect ? {
     title: `${defect.title} — ${defect.road}`,
     description: `${typeOf(defect.defect_type).label} reported in Orange, NSW on ${fmt(defect.reported_at)}. ${defect.description}`.slice(0, 155),
@@ -49,8 +54,20 @@ export function DefectDetailPage() {
     const keep = <T,>(fn: (v: T) => void) => (v: T) => { if (live) fn(v); };
     setNotFound(false);
     setUpdates([]);
-    api.getDefect(id, userId).then(keep(setDefect)).catch(() => { if (live) { setDefect(null); setNotFound(true); } });
-    api.listUpdates(id).then(keep(setUpdates)).catch(() => {});
+    setSavedAt(null);
+    setHidden(null);
+    api.getDefect(id, userId)
+      .then(keep((d: Defect) => { setDefect(d); saveCopy(`defect:${id}`, d); }))
+      .catch((err) => {
+        if (!live) return;
+        // No signal: use the copy saved the last time this report was opened on this phone
+        const copy = readCopy<Defect>(`defect:${id}`);
+        if (copy && isNetworkError(err)) { setDefect(copy.data); setSavedAt(copy.at); return; }
+        setDefect(null); setNotFound(true);
+      });
+    api.listUpdates(id)
+      .then(keep((u: RepairUpdate[]) => { setUpdates(u); saveCopy(`updates:${id}`, u); }))
+      .catch(() => { const copy = readCopy<RepairUpdate[]>(`updates:${id}`); if (copy && live) setUpdates(copy.data); });
     api.listContractors().then(keep(setContractors)).catch(() => {});
     if (userId) {
       api.hasVoted(id, userId).then(keep(setVoted)).catch(() => {});
@@ -65,9 +82,16 @@ export function DefectDetailPage() {
   async function refresh() {
     if (!id) return;
     const [d, us] = await Promise.all([api.getDefect(id, userId).catch(() => null), api.listUpdates(id).catch(() => [])]);
-    if (d) setDefect(d);
+    if (d) { setDefect(d); saveCopy(`defect:${id}`, d); }
     setUpdates(us);
   }
+
+  // The hidden photo, for council and the person who reported it
+  const canSeeHidden = role === 'admin' || !!defect?.mine;
+  useEffect(() => {
+    if (!defect?.photo_hidden_at || !canSeeHidden) { setHidden(null); return; }
+    void api.getHiddenPhoto(defect.id).then(setHidden);
+  }, [defect?.id, defect?.photo_hidden_at, canSeeHidden]);
 
   if (notFound) return (
     <main className="w-full max-w-[1280px] mx-auto px-6 py-8">
@@ -90,7 +114,37 @@ export function DefectDetailPage() {
   const awaitingResponse = myJob && defect.status === 'assigned' && !defect.accepted_at;
   const awaitingVerification = defect.status === 'completed' && !defect.verified_at;
   const verified = defect.status === 'completed' && !!defect.verified_at;
+  // A resident says the verified repair isn't fixed, and council hasn't answered yet
+  const reopenOpen = verified && !!defect.reopen_requested_at && new Date(defect.reopen_requested_at) > new Date(defect.verified_at!);
+  const canAskReopen = role === 'citizen' && authed && verified && !reopenOpen && (defect.mine || voted)
+    && Date.now() - new Date(defect.verified_at!).getTime() < 7 * 86400000;
+  // This job's steps saved on this phone, not sent yet
+  const waitingSteps = outbox.filter(i => isJob(i) && i.defectId === defect.id && i.userId === userId);
+  const offlineNow = !navigator.onLine;
 
+  /** Contractor step with no signal: keep it on the phone, and show the job as if it went through. */
+  async function saveStepOffline(step: JobStep, note: string, progress: number | null, photo: PhotoEvidence | null, patch: Partial<Defect>) {
+    if (!defect || !userId) return;
+    if (photo && (photo.meta.photo_source !== 'camera' || photo.meta.photo_lat == null || !photo.meta.photo_taken_at)) {
+      throw new Error('No internet. To save this for later, take the photo with the camera at the site (with GPS on).');
+    }
+    await saveJobStep({ userId, defectId: defect.id, title: defect.title, step, note, progress, photo: photo?.file ?? null, meta: photo?.meta ?? null });
+    const next = { ...defect, ...patch };
+    setDefect(next);
+    saveCopy(`defect:${defect.id}`, next);
+    toast('success', 'Saved on this phone', `${JOB_STEP_LABEL[step]} will be sent when you're back online.`);
+  }
+
+  /** Runs a contractor step online; with no signal it's saved for later instead. */
+  async function stepOrSave(online: () => Promise<void>, step: JobStep, note: string, progress: number | null,
+                            photo: PhotoEvidence | null, patch: Partial<Defect>) {
+    if (!navigator.onLine) return saveStepOffline(step, note, progress, photo, patch);
+    try { await online(); }
+    catch (err) {
+      if (!isNetworkError(err)) throw err;
+      await saveStepOffline(step, note, progress, photo, patch);
+    }
+  }
   async function run(fn: () => Promise<void>, errTitle: string) {
     try { await fn(); }
     catch (err) { toast('error', errTitle, errorMessage(err, 'Please try again.')); }
@@ -99,7 +153,11 @@ export function DefectDetailPage() {
   function acceptJob() {
     return run(async () => {
       if (!defect) return;
-      await api.acceptAssignment(defect.id, userId!);
+      const now = new Date().toISOString();
+      let sent = false;
+      await stepOrSave(async () => { await api.acceptAssignment(defect.id, userId!); sent = true; }, 'accept', '', 10, null,
+        { status: 'progress', accepted_at: now, progress: Math.max(defect.progress, 10) });
+      if (!sent) return;
       await refresh();
       toast('success', 'Job accepted', 'It is now in progress.');
     }, 'Could not accept job');
@@ -148,20 +206,31 @@ export function DefectDetailPage() {
   function markProgress() {
     return run(async () => {
       if (!defect) return;
-      await api.updateDefect(defect.id, { status: 'progress', accepted_at: defect.accepted_at || new Date().toISOString() });
-      await api.addUpdate(defect.id, { action: 'Work started', note: 'Crew on site.', progress: Math.max(defect.progress, 25) }, userId!, 'contractor');
+      const progress = Math.max(defect.progress, 25);
+      let sent = false;
+      await stepOrSave(async () => {
+        await api.updateDefect(defect.id, { status: 'progress', accepted_at: defect.accepted_at || new Date().toISOString() });
+        await api.addUpdate(defect.id, { action: 'Work started', note: 'Crew on site.', progress }, userId!, 'contractor');
+        sent = true;
+      }, 'start', 'Crew on site.', progress, null, { status: 'progress', progress, accepted_at: defect.accepted_at || new Date().toISOString() });
+      if (!sent) return;
       await refresh();
       toast('info', 'Marked in progress', 'The update is on the timeline.');
     }, 'Could not update job');
   }
 
   function markComplete() {
-    openModal(<CompleteModal place={photoPlace(defect)} onCancel={closeModal} onSubmit={(note, photo) => run(async () => {
+    openModal(<CompleteModal place={photoPlace(defect)} before={defect?.photo_url ?? null} onCancel={closeModal} onSubmit={(note, photo) => run(async () => {
       if (!defect) return;
-      const photo_url = await api.uploadPhoto(photo.file, userId!);
-      await api.completeJob(defect.id, note, photo_url, photo.meta, userId!);
-      await refresh();
+      let sent = false;
+      await stepOrSave(async () => {
+        const photo_url = await api.uploadPhoto(photo.file, userId!);
+        await api.completeJob(defect.id, note, photo_url, photo.meta, userId!);
+        sent = true;
+      }, 'complete', note, 100, photo, { status: 'completed', progress: 100 });
       closeModal();
+      if (!sent) return;
+      await refresh();
       toast('success', 'Marked complete', 'Sent to council for verification.');
     }, 'Could not complete job')} />);
   }
@@ -224,14 +293,84 @@ export function DefectDetailPage() {
   }
 
   function openAddUpdate() {
-    openModal(<AddUpdateModal place={photoPlace(defect)} onSubmit={(note, progress, photo) => run(async () => {
+    openModal(<AddUpdateModal place={photoPlace(defect)} before={defect?.photo_url ?? null} onSubmit={(note, progress, photo) => run(async () => {
       if (!defect) return;
-      const photo_url = await api.uploadPhoto(photo.file, userId!);
-      await api.addUpdate(defect.id, { action: 'Progress update', note, progress, photo_url, photo: photo.meta }, userId!, 'contractor');
-      await refresh();
+      let sent = false;
+      await stepOrSave(async () => {
+        const photo_url = await api.uploadPhoto(photo.file, userId!);
+        await api.addUpdate(defect.id, { action: 'Progress update', note, progress, photo_url, photo: photo.meta }, userId!, 'contractor');
+        sent = true;
+      }, 'progress', note, progress, photo, { progress });
       closeModal();
+      if (!sent) return;
+      await refresh();
       toast('success', 'Update published', 'Progress note added to the timeline.');
     }, 'Could not publish update')} onCancel={closeModal} currentProgress={defect?.progress ?? 0} />);
+  }
+
+  /* ── council: photo privacy, duplicates, "not fixed" requests ── */
+  function openHidePhoto() {
+    openModal(<ReasonModal title="Hide this photo from the public"
+      intro="The photo is taken off the public page. Only council and the person who reported it can still see it. Use this for faces, number plates or private property."
+      chips={['Face visible', 'Number plate visible', 'Private property', 'Inappropriate content']} cta="Hide photo"
+      onCancel={closeModal} onSubmit={(reason) => run(async () => {
+        if (!defect) return;
+        await api.hidePhoto(defect.id, reason);
+        await refresh();
+        closeModal();
+        toast('success', 'Photo hidden', 'It no longer shows on the public page.');
+      }, 'Could not hide photo')} />);
+  }
+
+  function showPhotoAgain() {
+    return run(async () => {
+      if (!defect) return;
+      await api.showPhoto(defect.id);
+      await refresh();
+      toast('success', 'Photo shown again', 'It is back on the public page.');
+    }, 'Could not show photo');
+  }
+
+  async function openMerge() {
+    const all = await api.listDefects({}).catch(() => [] as Defect[]);
+    const candidates = all
+      .filter(d => d.id !== defect!.id && ['pending', 'assigned', 'progress'].includes(d.status))
+      .map(d => ({ d, m: metres(defect!.latitude, defect!.longitude, d.latitude, d.longitude) }))
+      .filter(x => x.m <= 500)
+      .sort((a, b) => a.m - b.m)
+      .slice(0, 8);
+    openModal(<MergeModal from={defect!} candidates={candidates} onCancel={closeModal} onPick={(intoId) => run(async () => {
+      if (!defect) return;
+      await api.mergeDefects(defect.id, intoId);
+      closeModal();
+      toast('success', `Merged into ${intoId}`, 'Backing and followers were moved there.');
+      void nav(`/defect/${intoId}`);
+    }, 'Could not merge reports')} />);
+  }
+
+  function openAskReopen() {
+    openModal(<ReopenModal place={photoPlace(defect)} onCancel={closeModal} onSubmit={(note, photo) => run(async () => {
+      if (!defect) return;
+      const url = await api.uploadPhoto(photo.file, userId!);
+      try { await api.requestReopen(defect.id, note, url, photo.meta); }
+      catch (err) { void api.deletePhoto(url); throw err; }
+      await refresh();
+      closeModal();
+      toast('success', 'Sent to council', 'Council will check the repair and reopen it if needed.');
+    }, 'Could not send')} />);
+  }
+
+  function dismissReopen() {
+    openModal(<ReasonModal title="The repair is fine"
+      intro="The resident who asked will see this reason on the timeline."
+      chips={['Inspected — repair is sound', 'Different defect nearby — please make a new report', 'Normal wear, not a failed repair']} cta="Close request"
+      onCancel={closeModal} onSubmit={(note) => run(async () => {
+        if (!defect) return;
+        await api.dismissReopen(defect.id, note, userId!);
+        await refresh();
+        closeModal();
+        toast('info', 'Request closed', 'The repair stays verified.');
+      }, 'Could not close the request')} />);
   }
 
   return (
@@ -245,8 +384,25 @@ export function DefectDetailPage() {
               <Photo src={defect.photo_url} alt={defect.title} loading="eager" {...{ fetchpriority: 'high' }} className="block w-full max-h-[420px] object-cover bg-surface-2 cursor-zoom-in"
                      onClick={() => window.open(defect.photo_url!, '_blank', 'noopener')} />
             )}
+            {!defect.photo_url && defect.photo_hidden_at && (hidden?.photo_url ? (
+              <div className="relative">
+                <Photo src={hidden.photo_url} alt={defect.title} className="block w-full max-h-[420px] object-cover bg-surface-2 opacity-90" />
+                <span className="absolute top-3 left-3 text-[12px] font-semibold px-2.5 py-1 rounded-full bg-black/70 text-white flex items-center gap-1.5">
+                  <IconEye size={13} /> Hidden from the public{hidden.reason ? ` — ${hidden.reason}` : ''}. Only {role === 'admin' ? 'council and the reporter' : 'you and council'} can see it.
+                </span>
+              </div>
+            ) : (
+              <div className="p-4 bg-surface-2 border-b border-border text-[13px] text-muted">Photo hidden by council for privacy.</div>
+            ))}
             <div className="p-6">
-              {role === 'admin' && defect.photo_url && <div className="mb-4"><PhotoChecks info={defect} /></div>}
+              {savedAt && (
+                <div className="mb-4 p-3 rounded-lg bg-am-50 border border-am-500/25 text-[12.5px] text-am-700">
+                  <b>No internet — saved copy from {new Date(savedAt).toLocaleString('en-AU', { hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' })}.</b> It may be out of date.
+                </div>
+              )}
+              {role === 'admin' && (defect.photo_url || hidden?.photo_url) && (
+                <div className="mb-4"><PhotoChecks info={defect.photo_url ? defect : { ...defect, photo_flags: hidden?.photo_flags ?? [] }} /></div>
+              )}
               <div className="flex flex-wrap items-center gap-2 mb-3">
                 <StatusBadge status={defect.status} verified={!!defect.verified_at} />
                 <SeverityChip level={defect.severity} />
@@ -265,6 +421,18 @@ export function DefectDetailPage() {
                   <div>
                     <div className="text-[13px] font-bold text-rd-700 mb-1">Rejected</div>
                     <p className="text-[13px] text-rd-700">{defect.reject_reason}</p>
+                    {defect.merged_into && (
+                      <Link to={`/defect/${defect.merged_into}`} className="inline-block mt-1.5 text-[13px] font-bold text-rd-700 underline">Open {defect.merged_into}</Link>
+                    )}
+                  </div>
+                </div>
+              )}
+              {reopenOpen && (
+                <div className="mt-4 p-3 rounded-lg bg-rd-50 border border-rd-600/25 flex items-start gap-2.5">
+                  <span className="text-rd-600 mt-0.5"><IconAlert size={16} /></span>
+                  <div className="text-[13px] text-rd-700">
+                    <div className="font-bold mb-0.5">A resident says this isn't fixed</div>
+                    {role === 'admin' ? 'Check their photo on the timeline below, then reopen the job or close the request.' : 'Council has been asked to check the repair again.'}
                   </div>
                 </div>
               )}
@@ -347,6 +515,23 @@ export function DefectDetailPage() {
                 )}
               </>
             )}
+            {canAskReopen && (
+              <button onClick={openAskReopen} className="btn btn-danger btn-block">Not fixed? Tell council</button>
+            )}
+            {myJob && defect.status !== 'completed' && (
+              <a href={directionsUrl(defect.latitude, defect.longitude)} target="_blank" rel="noreferrer" className="btn btn-secondary btn-block hover:no-underline">
+                <IconMap size={16} /> Navigate to the site
+              </a>
+            )}
+            {myJob && waitingSteps.length > 0 && (
+              <div className="p-3 rounded-lg bg-am-50 border border-am-500/25 text-[12.5px] text-am-700">
+                <b>Saved on this phone, waiting to send:</b>
+                <ul className="list-disc pl-5 mt-1">{waitingSteps.map(i => <li key={i.key}>{isJob(i) ? JOB_STEP_LABEL[i.step] : ''}{i.status === 'failed' ? ` — not accepted: ${i.error}` : ''}</li>)}</ul>
+              </div>
+            )}
+            {myJob && offlineNow && (
+              <p className="text-[12.5px] text-muted">No internet: accepting, starting, progress photos and completion are saved on this phone and sent later.</p>
+            )}
             {awaitingResponse && (
               <>
                 <p className="text-[13px] text-muted">Council has assigned this job to you. Accept it or decline so it can be reassigned.</p>
@@ -391,6 +576,12 @@ export function DefectDetailPage() {
                 <IconCheck size={15} /> Verified by council {fmt(defect.verified_at!)} — closed
               </p>
             )}
+            {role === 'admin' && authed && reopenOpen && (
+              <>
+                <button onClick={openRework} className="btn btn-danger btn-block">Reopen for rework</button>
+                <button onClick={dismissReopen} className="btn btn-secondary btn-block">Repair is fine — close request</button>
+              </>
+            )}
             {role === 'admin' && authed && defect.status !== 'completed' && (
               <>
                 {defect.status === 'assigned' && !defect.accepted_at && (
@@ -402,7 +593,16 @@ export function DefectDetailPage() {
                 {defect.status !== 'rejected' && (
                   <button onClick={openReject} className="btn btn-danger btn-block">Reject report</button>
                 )}
+                {defect.status !== 'rejected' && (
+                  <button onClick={() => void openMerge()} className="btn btn-secondary btn-block">Merge as duplicate…</button>
+                )}
               </>
+            )}
+            {role === 'admin' && authed && defect.photo_url && (
+              <button onClick={openHidePhoto} className="btn btn-ghost btn-block">Hide photo from the public</button>
+            )}
+            {role === 'admin' && authed && !defect.photo_url && defect.photo_hidden_at && (
+              <button onClick={showPhotoAgain} className="btn btn-ghost btn-block">Show photo to the public again</button>
             )}
             {!authed && (
               <>
@@ -537,7 +737,7 @@ function AssignModal({ contractors, severity, initialInstructions, onPick, onCan
   );
 }
 
-function AddUpdateModal({ onSubmit, onCancel, currentProgress, place }: { onSubmit: (note: string, progress: number, photo: PhotoEvidence) => Promise<void> | void; onCancel: () => void; currentProgress: number; place: PhotoPlace | null }) {
+function AddUpdateModal({ onSubmit, onCancel, currentProgress, place, before }: { onSubmit: (note: string, progress: number, photo: PhotoEvidence) => Promise<void> | void; onCancel: () => void; currentProgress: number; place: PhotoPlace | null; before: string | null }) {
   const [note, setNote] = useState('');
   const [progress, setProgress] = useState(Math.min(currentProgress, 95));
   const [photo, setPhoto] = useState<PhotoEvidence | null>(null);
@@ -559,6 +759,7 @@ function AddUpdateModal({ onSubmit, onCancel, currentProgress, place }: { onSubm
           <input id="upd-prog" type="range" min={0} max={95} step={5} value={Math.min(progress, 95)}
                  onChange={(e) => setProgress(Number(e.target.value))} className="w-full accent-brand" />
         </div>
+        <BeforePhoto src={before} />
         <PhotoField value={photo} onChange={setPhoto} place={place} label="Take site photo (required)" />
       </div>
       <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
@@ -644,7 +845,7 @@ function ReworkModal({ onSubmit, onCancel }: { onSubmit: (note: string) => Promi
   );
 }
 
-function CompleteModal({ onSubmit, onCancel, place }: { onSubmit: (note: string, photo: PhotoEvidence) => Promise<void> | void; onCancel: () => void; place: PhotoPlace | null }) {
+function CompleteModal({ onSubmit, onCancel, place, before }: { onSubmit: (note: string, photo: PhotoEvidence) => Promise<void> | void; onCancel: () => void; place: PhotoPlace | null; before: string | null }) {
   const [note, setNote] = useState('');
   const [photo, setPhoto] = useState<PhotoEvidence | null>(null);
   const [busy, setBusy] = useState(false);
@@ -653,6 +854,7 @@ function CompleteModal({ onSubmit, onCancel, place }: { onSubmit: (note: string,
       <header className="p-5 pb-0"><h3>Mark repair complete</h3></header>
       <div className="p-4 px-5 pt-3 space-y-4">
         <p className="text-[13.5px] text-muted">Council will check the work before closing the job. A photo of the finished repair is required.</p>
+        <BeforePhoto src={before} />
         <PhotoField value={photo} onChange={setPhoto} place={place} label="Take photo of the finished repair (required)" />
         <div className="grid gap-1.5">
           <label className="label" htmlFor="done-note">Notes for council (optional)</label>
@@ -665,6 +867,120 @@ function CompleteModal({ onSubmit, onCancel, place }: { onSubmit: (note: string,
         <button className="btn btn-success" disabled={busy || !photo} title={photo ? undefined : 'Add a photo first'}
                 onClick={async () => { if (!photo) return; setBusy(true); await onSubmit(note.trim(), photo); setBusy(false); }}>
           {busy ? 'Submitting…' : 'Mark complete'}
+        </button>
+      </footer>
+    </>
+  );
+}
+
+/** The resident's original photo, so the crew can take the "after" from the same angle. */
+function BeforePhoto({ src }: { src: string | null }) {
+  if (!src) return null;
+  return (
+    <figure className="m-0">
+      <div className="relative aspect-[16/9] rounded-lg overflow-hidden bg-bg-alt border border-border">
+        <Photo src={src} alt="Before: the reported defect" className="absolute inset-0 w-full h-full object-cover"
+               fallback={<div className="absolute inset-0 grid place-items-center text-[12.5px] text-muted">Before photo not available offline</div>} />
+        <span className="absolute top-2 left-2 text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded bg-ink text-bg">Before</span>
+      </div>
+      <figcaption className="text-[12px] text-muted mt-1">Take your photo from the same spot and angle so council can compare.</figcaption>
+    </figure>
+  );
+}
+
+/** A reason picked from common ones or typed. */
+function ReasonModal({ title, intro, chips, cta, onSubmit, onCancel }: {
+  title: string; intro: string; chips: string[]; cta: string;
+  onSubmit: (reason: string) => Promise<void> | void; onCancel: () => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  return (
+    <>
+      <header className="p-5 pb-0"><h3>{title}</h3></header>
+      <div className="p-4 px-5 pt-3">
+        <p className="text-[13.5px] text-muted mb-3">{intro}</p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {chips.map(r => <button key={r} onClick={() => setReason(r)} className="chip">{r}</button>)}
+        </div>
+        <textarea className="textarea" maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason…" />
+      </div>
+      <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
+        <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+        <button className="btn btn-primary" disabled={!reason.trim() || busy}
+                onClick={async () => { if (!reason.trim()) return; setBusy(true); await onSubmit(reason.trim()); setBusy(false); }}>{busy ? 'Saving…' : cta}</button>
+      </footer>
+    </>
+  );
+}
+
+/** Council picks the original report a duplicate should be merged into. */
+function MergeModal({ from, candidates, onPick, onCancel }: {
+  from: Defect; candidates: { d: Defect; m: number }[];
+  onPick: (intoId: string) => Promise<void> | void; onCancel: () => void;
+}) {
+  const [selected, setSelected] = useState(candidates[0]?.d.id ?? '');
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const target = (typed.trim().toUpperCase() || selected);
+  const ok = /^RD-[A-Z0-9]{6,14}$/.test(target) && target !== from.id;
+  return (
+    <>
+      <header className="p-5 pb-0"><h3>Merge {from.id} as a duplicate</h3></header>
+      <div className="p-4 px-5 pt-3 max-h-[70vh] overflow-y-auto">
+        <p className="text-[13.5px] text-muted mb-3">
+          {from.id} will be closed as a duplicate. Its backing and followers (and the person who reported it) move to the report you pick.
+        </p>
+        <p className="label mb-2">Open reports within 500 m</p>
+        <div className="grid gap-2 mb-4">
+          {candidates.length === 0 && <div className="card p-3 text-[13px] text-muted">None nearby. Type the report ID below.</div>}
+          {candidates.map(({ d, m }) => (
+            <label key={d.id} className={`card p-3 flex items-center gap-3 cursor-pointer ${!typed && selected === d.id ? 'border-brand bg-brand-soft' : ''}`}>
+              <input type="radio" name="merge" checked={!typed && selected === d.id} onChange={() => { setSelected(d.id); setTyped(''); }} className="accent-brand" />
+              <div className="flex-1 min-w-0">
+                <div className="text-[13.5px] font-semibold truncate">{d.title}</div>
+                <div className="text-[12px] text-muted truncate">{d.id} · {distanceLabel(m)} away · {d.votes} backing · reported {fmt(d.reported_at)}</div>
+              </div>
+              <SeverityChip level={d.severity} />
+            </label>
+          ))}
+        </div>
+        <label className="label" htmlFor="merge-id">Or type a report ID</label>
+        <input id="merge-id" className="input mono mt-1.5" placeholder="RD-…" value={typed} onChange={(e) => setTyped(e.target.value)} />
+      </div>
+      <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
+        <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+        <button className="btn btn-primary" disabled={!ok || busy}
+                onClick={async () => { if (!ok) return; setBusy(true); await onPick(target); setBusy(false); }}>{busy ? 'Merging…' : `Merge into ${ok ? target : '…'}`}</button>
+      </footer>
+    </>
+  );
+}
+
+/** A resident says a verified repair isn't fixed — what's wrong, plus a photo taken now. */
+function ReopenModal({ onSubmit, onCancel, place }: { onSubmit: (note: string, photo: PhotoEvidence) => Promise<void> | void; onCancel: () => void; place: PhotoPlace | null }) {
+  const [note, setNote] = useState('');
+  const [photo, setPhoto] = useState<PhotoEvidence | null>(null);
+  const [busy, setBusy] = useState(false);
+  const ok = note.trim().length >= 10 && !!photo;
+  return (
+    <>
+      <header className="p-5 pb-0"><h3>Not fixed?</h3></header>
+      <div className="p-4 px-5 pt-3 space-y-4">
+        <p className="text-[13.5px] text-muted">Tell council what's still wrong and take a photo of it now. Council will check the repair and can send the contractor back.</p>
+        <div className="flex flex-wrap gap-2">
+          {['The pothole has come back', 'The patch is breaking up', 'Only part of it was fixed'].map(r => (
+            <button key={r} onClick={() => setNote(r + '. ')} className="chip">{r}</button>
+          ))}
+        </div>
+        <textarea className="textarea" maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What's wrong with the repair…" />
+        <PhotoField value={photo} onChange={setPhoto} place={place} label="Take a photo of the problem (required)" />
+      </div>
+      <footer className="flex gap-2 justify-end p-4 bg-surface-2 border-t border-border">
+        <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+        <button className="btn btn-danger" disabled={!ok || busy} title={ok ? undefined : 'Describe the problem (10+ characters) and add a photo'}
+                onClick={async () => { if (!ok || !photo) return; setBusy(true); await onSubmit(note.trim(), photo); setBusy(false); }}>
+          {busy ? 'Sending…' : 'Send to council'}
         </button>
       </footer>
     </>

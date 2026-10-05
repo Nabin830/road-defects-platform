@@ -60,6 +60,9 @@ export interface Defect extends PhotoInfo {
   verified_at?: string | null;
   work_instructions?: string | null;   // council's work order: what the contractor must do
   due_at?: string | null;              // council-set fix-by date (overrides the severity default)
+  reopen_requested_at?: string | null; // a resident says the verified repair isn't fixed
+  merged_into?: string | null;         // closed as a duplicate of this report
+  photo_hidden_at?: string | null;     // council took the photo off the public page
   reported_at: string;
   updated_at: string;
   // Derived
@@ -94,11 +97,13 @@ export interface SignUpInput {
   name: string;
   role?: Role;
   suburb?: string;
+  captchaToken?: string;
 }
 
 export interface SignInInput {
   email: string;
   password: string;
+  captchaToken?: string;
 }
 
 export interface CreateDefectInput {
@@ -148,6 +153,9 @@ export interface DBDefect extends PhotoInfo {
   verified_at?: string | null;
   work_instructions?: string | null;   // council's work order: what the contractor must do
   due_at?: string | null;              // council-set fix-by date (overrides the severity default)
+  reopen_requested_at?: string | null; // a resident says the verified repair isn't fixed
+  merged_into?: string | null;         // closed as a duplicate of this report
+  photo_hidden_at?: string | null;     // council took the photo off the public page
   reported_at: string;
   updated_at: string;
 }
@@ -155,7 +163,7 @@ export interface DBDefect extends PhotoInfo {
 // ─── In-app notifications ─────────────────────────────────────────────
 export type NotificationKind =
   | 'report' | 'assigned' | 'accepted' | 'declined' | 'progress'
-  | 'complete' | 'verified' | 'rework' | 'rejected' | 'update';
+  | 'complete' | 'verified' | 'rework' | 'rejected' | 'reopen' | 'update';
 
 export interface AppNotification {
   id: string;

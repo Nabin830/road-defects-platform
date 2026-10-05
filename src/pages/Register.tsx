@@ -10,6 +10,7 @@ import { IconUser, IconTruck, IconAlert, IconCheck } from '../lib/icons';
 import type { Role } from '../lib/types';
 import { useSeo } from '../lib/seo';
 import { errorMessage } from '../lib/utils';
+import { Turnstile, TURNSTILE_KEY } from '../components/Turnstile';
 
 export function RegisterPage() {
   useSeo({ title: 'Create an account', description: 'Create a free RoadFix account to report potholes and road damage in Orange, NSW and follow each repair.' });
@@ -26,6 +27,8 @@ export function RegisterPage() {
   const [confirm, setConfirm] = useState('');
   const [terms, setTerms] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaRound, setCaptchaRound] = useState(0);   // each token works once — get a new one after a try
 
   const pwOk = password.length >= 8;
   const matches = password && confirm && password === confirm;
@@ -36,10 +39,11 @@ export function RegisterPage() {
     if (!matches) return toast('warning', 'Passwords do not match', 'Please re-enter your password.');
     if (!pwOk) return toast('warning', 'Password too short', 'Use at least 8 characters.');
 
+    if (HAS_SUPABASE && TURNSTILE_KEY && !captcha) return toast('warning', 'One more step', 'Tick the "I\'m not a robot" box first.');
     setBusy(true);
     try {
       if (HAS_SUPABASE) {
-        await signUp(email, password, name, role);
+        await signUp(email, password, name, role, captcha ?? undefined);
         toast('success', 'Account created', 'Welcome to RoadFix!');
         void nav(role === 'contractor' ? '/contractor' : '/dashboard');
       } else {
@@ -51,6 +55,7 @@ export function RegisterPage() {
       toast('error', 'Registration failed', errorMessage(err, 'Try a different email.'));
     } finally {
       setBusy(false);
+      setCaptchaRound(n => n + 1);
     }
   }
 
@@ -135,6 +140,7 @@ export function RegisterPage() {
               <span>I agree to the <Link to="/terms" target="_blank" className="underline underline-offset-2">terms of use</Link> and <Link to="/privacy" target="_blank" className="underline underline-offset-2">privacy policy</Link>, and understand reports are shown on the public map.</span>
             </label>
 
+            {HAS_SUPABASE && <Turnstile onToken={setCaptcha} resetKey={captchaRound} />}
             <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy}>
               {busy ? 'Creating account…' : 'Create account'}
             </button>

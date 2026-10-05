@@ -9,6 +9,7 @@ import { HAS_SUPABASE } from '../lib/supabase';
 import { IconMail, IconLock, IconEye, IconShield } from '../lib/icons';
 import { useSeo } from '../lib/seo';
 import { errorMessage } from '../lib/utils';
+import { Turnstile, TURNSTILE_KEY } from '../components/Turnstile';
 
 export function LoginPage() {
   useSeo({ title: 'Sign in', description: 'Sign in to RoadFix to report road defects and follow repairs in Orange, NSW.', noindex: true });
@@ -24,13 +25,16 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaRound, setCaptchaRound] = useState(0);   // each token works once — get a new one after a try
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (HAS_SUPABASE && TURNSTILE_KEY && !captcha) return toast('warning', 'One more step', 'Tick the "I\'m not a robot" box first.');
     setBusy(true);
     try {
       if (HAS_SUPABASE) {
-        await signIn(email, password);
+        await signIn(email, password, captcha ?? undefined);
         // role will be updated by store; read it fresh
         const r = useAuth.getState().role;
         toast('success', 'Welcome back', 'Signed in successfully.');
@@ -46,6 +50,7 @@ export function LoginPage() {
       toast('error', 'Sign in failed', errorMessage(err, 'Check your email and password.'));
     } finally {
       setBusy(false);
+      setCaptchaRound(n => n + 1);
     }
   }
 
@@ -98,6 +103,7 @@ export function LoginPage() {
             <div className="-mt-1 text-right">
               <span className="text-[12.5px] text-muted">Forgot your password? Ask council to reset it.</span>
             </div>
+            {HAS_SUPABASE && <Turnstile onToken={setCaptcha} resetKey={captchaRound} />}
             <button className="btn btn-primary btn-lg btn-block" type="submit" disabled={busy}>
               {busy ? 'Signing in…' : 'Sign in'}
             </button>

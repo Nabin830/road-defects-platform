@@ -21,6 +21,8 @@
 --                         • offline reports: sent later from the phone,
 --                           strict rules + always flagged for council
 --   STEP 3. FOLLOWERS — "follow updates" table + in-app notifications
+--   STEP 3B. TOOLS    — hide photos, "not fixed" reopen requests,
+--                       merge duplicates, phone notifications
 --   STEP 4. STORAGE   — defect-photos bucket + policies
 --   STEP 5. USERS     — makes council@gmail.com a confirmed council admin
 --
@@ -211,7 +213,7 @@ create index if not exists idx_defects_reporter_time on public.defects(reported_
 create index if not exists idx_profiles_contractor  on public.profiles(contractor_id);                  -- who hears about a job
 create index if not exists idx_updates_actor_defect on public.repair_updates(defect_id, actor_id, created_at desc); -- timeline flood limit
 create index if not exists idx_updates_milestones   on public.repair_updates(action, created_at)
-  where action in ('Assigned', 'Repair complete');                                                     -- council reports
+  where action in ('Assigned', 'Repair complete', 'Rework requested', 'Contractor declined');           -- council reports
 
 -- ─── AUTO-UPDATE timestamps ───────────────────────────────────────
 create or replace function public.touch_updated_at()
@@ -236,7 +238,7 @@ begin
   if (to_jsonb(new) - 'votes' - 'updated_at') = (to_jsonb(old) - 'votes' - 'updated_at') then
     return new;
   end if;
-  if auth.uid() is not null and not public.is_admin() then
+  if auth.uid() is not null and not public.is_admin() and not public.trusted() then
     if old.verified_at is not null then
       raise exception 'This repair has been verified and closed by council';
     end if;
@@ -678,12 +680,12 @@ returns boolean as $$
   select coalesce(current_setting('roadfix.trusted', true), '') = 'on';
 $$ language sql stable set search_path = public;
 
--- Where reports are accepted: all of Australia (incl. Tasmania) while testing
--- (matches the app's COUNCIL_AREA). For Orange only:
---   select lat between -33.48 and -33.12 and lng between 148.88 and 149.30;
+-- Where reports are accepted: the Orange City Council area (matches the app's COUNCIL_AREA).
+-- To test from somewhere else, temporarily widen it — all of Australia is:
+--   select lat between -44.0 and -9.0 and lng between 112.0 and 154.0;
 create or replace function public.in_council_area(lat numeric, lng numeric)
 returns boolean as $$
-  select lat between -44.0 and -9.0 and lng between 112.0 and 154.0;
+  select lat between -33.48 and -33.12 and lng between 148.88 and 149.30;
 $$ language sql immutable set search_path = public;
 
 -- Columns whose value differs between two versions of a row (ignores updated_at)
@@ -725,7 +727,7 @@ begin
   new.reject_reason := null;         new.work_instructions := null; new.due_at := null;
   new.reported_at := now();          new.updated_at := now();
   if not public.in_council_area(new.latitude, new.longitude) then
-    raise exception 'RoadFix only covers roads in Australia.';
+    raise exception 'RoadFix only covers roads in the Orange City Council area.';
   end if;
   return new;
 end $$ language plpgsql security definer set search_path = public;
@@ -751,7 +753,7 @@ begin
     allowed := array['title', 'description', 'photo_url', 'road', 'suburb', 'latitude', 'longitude',
                      'defect_type', 'depth', 'width'];
     if not public.in_council_area(new.latitude, new.longitude) then
-      raise exception 'RoadFix only covers roads in Australia.';
+      raise exception 'RoadFix only covers roads in the Orange City Council area.';
     end if;
   else
     raise exception 'You can''t change this report.';
@@ -945,7 +947,8 @@ alter table public.repair_updates
   add column if not exists photo_lat      numeric(10,7),
   add column if not exists photo_lng      numeric(10,7),
   add column if not exists photo_accuracy numeric(9,1),
-  add column if not exists photo_flags    text[] not null default '{}';
+  add column if not exists photo_flags    text[] not null default '{}',
+  add column if not exists captured_offline boolean not null default false;   -- contractor photo taken offline
 
 -- Number of differing bits between two 64-bit fingerprints (0 = same picture)
 create or replace function public.photo_hash_distance(a text, b text)
@@ -961,21 +964,24 @@ declare
   pin_lng  numeric;
   far_flag text;
   self_id  text;      -- the defect this photo belongs to
-  offline  boolean := false;
+  offline  boolean := new.captured_offline;
+  owner    uuid;      -- who took the photo
 begin
   if tg_table_name = 'defects' then
-    -- Warnings belong to the photo: they only change when a new photo is attached
+    -- Warnings belong to the photo: they only change when a new photo is attached.
+    -- Council's hide/show photo functions (trusted) set them themselves.
     if tg_op = 'UPDATE' then
-      if new.photo_url is not distinct from old.photo_url then
-        new.photo_flags := old.photo_flags;
+      if new.photo_url is not distinct from old.photo_url or public.trusted() then
+        if not public.trusted() then new.photo_flags := old.photo_flags; end if;
         return new;
       end if;
     end if;
     pin_lat := new.latitude; pin_lng := new.longitude; far_flag := 'far_from_pin'; self_id := new.id;
-    offline := new.captured_offline;   -- read here: repair_updates rows have no such column
+    owner := new.reported_by;
   else
     select latitude, longitude into pin_lat, pin_lng from public.defects where id = new.defect_id;
     far_flag := 'far_from_defect'; self_id := new.defect_id;
+    owner := new.actor_id;
   end if;
 
   if coalesce(new.photo_url, '') = '' then
@@ -983,7 +989,7 @@ begin
     return new;
   end if;
 
-  -- Offline reports: saved on the phone with no signal and sent later. The photo's time and GPS
+  -- Offline reports and contractor updates: saved on the phone with no signal and sent later. The photo's time and GPS
   -- were recorded by the phone alone, with no server to check them against, so only a live
   -- camera photo with GPS, taken in the last 3 days and after the account was created, is
   -- accepted — and council always sees an "offline" warning. Everything else (rate limits,
@@ -992,12 +998,12 @@ begin
     if tg_op = 'INSERT' then
       if new.photo_source is distinct from 'camera' or new.photo_taken_at is null
          or new.photo_lat is null or new.photo_lng is null then
-        raise exception 'Reports saved offline need a live camera photo with GPS.';
+        raise exception 'Photos saved offline need to be taken with the live camera, with GPS on.';
       end if;
       if new.photo_taken_at > now() + interval '5 minutes' or new.photo_taken_at < now() - interval '3 days' then
-        raise exception 'Reports saved offline must be sent within 3 days of taking the photo.';
+        raise exception 'Anything saved offline must be sent within 3 days of taking its photo.';
       end if;
-      if new.photo_taken_at < (select created_at from public.profiles where id = new.reported_by) then
+      if new.photo_taken_at < (select created_at from public.profiles where id = owner) then
         raise exception 'This photo was taken before your account was created.';
       end if;
     end if;
@@ -1071,11 +1077,13 @@ begin
     raise exception 'This job is not in progress for your company.';
   end if;
   insert into public.repair_updates (defect_id, action, note, progress, photo_url, actor_id, actor_role,
-                                     photo_source, photo_hash, photo_taken_at, photo_lat, photo_lng, photo_accuracy)
+                                     photo_source, photo_hash, photo_taken_at, photo_lat, photo_lng, photo_accuracy,
+                                     captured_offline)
   values (p_defect_id, 'Repair complete', coalesce(nullif(trim(p_note), ''), 'Site cleared. Waiting for council to verify.'),
           100, p_photo_url, auth.uid(), 'contractor',
           p_photo->>'photo_source', p_photo->>'photo_hash', (p_photo->>'photo_taken_at')::timestamptz,
-          (p_photo->>'photo_lat')::numeric, (p_photo->>'photo_lng')::numeric, (p_photo->>'photo_accuracy')::numeric);
+          (p_photo->>'photo_lat')::numeric, (p_photo->>'photo_lng')::numeric, (p_photo->>'photo_accuracy')::numeric,
+          coalesce((p_photo->>'captured_offline')::boolean, false));
   update public.defects set status = 'completed', progress = 100 where id = p_defect_id;
 end $$ language plpgsql security definer set search_path = public;
 
@@ -1114,6 +1122,7 @@ create table public.notifications (
   title        text not null,
   body         text,
   read_at      timestamptz,
+  pushed_at    timestamptz,                         -- sent as a phone notification (see "push" Edge Function)
   created_at   timestamptz not null default now()
 );
 
@@ -1154,6 +1163,8 @@ begin
     when 'Verified by council' then 'verified'
     when 'Rework requested'    then 'rework'
     when 'Report rejected'     then 'rejected'
+    when 'Reopen requested'    then 'reopen'
+    when 'Merged as duplicate' then 'rejected'
     else 'update' end;
 
   insert into public.notifications (user_id, defect_id, defect_title, kind, title, body)
@@ -1164,6 +1175,7 @@ begin
            when v_kind = 'assigned' then 'Contractor assigned'
            when v_kind = 'complete' and r.is_admin      then 'Repair ready for verification'
            when v_kind = 'rework'   and r.is_contractor then 'Council requested rework'
+           when v_kind = 'reopen'   and r.is_admin      then 'Resident says it''s not fixed'
            else new.action
          end,
          new.note
@@ -1208,6 +1220,210 @@ begin
     alter publication supabase_realtime add table public.notifications;
   end if;
 end $$;
+
+
+-- ═══════════════════════════════════════════════════════════════════
+-- STEP 3B. RESIDENT, COUNCIL AND CONTRACTOR TOOLS
+-- ═══════════════════════════════════════════════════════════════════
+
+alter table public.defects
+  add column if not exists reopen_requested_at timestamptz,   -- a resident says the verified repair isn't fixed
+  add column if not exists merged_into     text references public.defects(id) on delete set null,
+  add column if not exists photo_hidden_at timestamptz;       -- council took the photo off the public page
+
+-- ─── Council hides a report photo from the public (faces, number plates) ───
+-- The photo link is moved to this private table, so the public API no longer returns it.
+-- Only council and the person who reported it can still see it.
+create table public.hidden_photos (
+  defect_id   text primary key references public.defects(id) on delete cascade,
+  photo_url   text not null,
+  photo_flags text[] not null default '{}',
+  reason      text,
+  hidden_by   uuid references public.profiles(id) on delete set null,
+  hidden_at   timestamptz not null default now()
+);
+alter table public.hidden_photos enable row level security;
+
+create policy "Hidden photos: council and the reporter"
+  on public.hidden_photos for select
+  using (public.is_admin() or exists (select 1 from public.defects d where d.id = defect_id and d.reported_by = auth.uid()));
+
+create or replace function public.hide_report_photo(p_defect_id text, p_reason text)
+returns void as $$
+declare d public.defects%rowtype;
+begin
+  if not public.is_admin() then raise exception 'Only council can hide photos.'; end if;
+  select * into d from public.defects where id = p_defect_id for update;
+  if not found or coalesce(d.photo_url, '') = '' then raise exception 'This report has no public photo.'; end if;
+  insert into public.hidden_photos (defect_id, photo_url, photo_flags, reason, hidden_by)
+  values (d.id, d.photo_url, d.photo_flags, nullif(trim(p_reason), ''), auth.uid())
+  on conflict (defect_id) do update set photo_url = excluded.photo_url, photo_flags = excluded.photo_flags,
+                                         reason = excluded.reason, hidden_by = excluded.hidden_by, hidden_at = now();
+  perform set_config('roadfix.trusted', 'on', true);
+  update public.defects set photo_url = null, photo_flags = '{}', photo_hidden_at = now() where id = d.id;
+  perform set_config('roadfix.trusted', 'off', true);
+end $$ language plpgsql security definer set search_path = public;
+
+create or replace function public.show_report_photo(p_defect_id text)
+returns void as $$
+declare h public.hidden_photos%rowtype;
+begin
+  if not public.is_admin() then raise exception 'Only council can show hidden photos.'; end if;
+  select * into h from public.hidden_photos where defect_id = p_defect_id;
+  if not found then raise exception 'This report has no hidden photo.'; end if;
+  perform set_config('roadfix.trusted', 'on', true);
+  update public.defects set photo_url = h.photo_url, photo_flags = h.photo_flags, photo_hidden_at = null where id = p_defect_id;
+  perform set_config('roadfix.trusted', 'off', true);
+  delete from public.hidden_photos where defect_id = p_defect_id;
+end $$ language plpgsql security definer set search_path = public;
+
+grant execute on function public.hide_report_photo(text, text) to authenticated;
+grant execute on function public.show_report_photo(text) to authenticated;
+
+-- ─── "Not fixed": a resident asks council to reopen a verified repair ───
+-- Within 7 days of council verifying it, by the reporter or someone who backed it,
+-- with a photo they took themselves. One open request per report, 3 a day per person.
+create or replace function public.request_reopen(p_defect_id text, p_note text, p_photo_url text, p_photo jsonb default null)
+returns void as $$
+declare d public.defects%rowtype;
+begin
+  if (select role from public.profiles where id = auth.uid()) is distinct from 'citizen' then
+    raise exception 'Only residents can ask for a repair to be reopened.';
+  end if;
+  select * into d from public.defects where id = p_defect_id for update;
+  if not found or d.status <> 'completed' or d.verified_at is null then
+    raise exception 'Only repairs council has verified can be reopened.';
+  end if;
+  if d.verified_at < now() - interval '7 days' then
+    raise exception 'This repair was verified more than 7 days ago. Please make a new report instead.';
+  end if;
+  if d.reported_by is distinct from auth.uid()
+     and not exists (select 1 from public.votes where defect_id = d.id and user_id = auth.uid()) then
+    raise exception 'Only the person who reported this, or people who backed it, can ask to reopen it.';
+  end if;
+  if d.reopen_requested_at is not null and d.reopen_requested_at > d.verified_at then
+    raise exception 'Council has already been asked to reopen this. They will check it.';
+  end if;
+  if char_length(trim(coalesce(p_note, ''))) not between 10 and 1000 then
+    raise exception 'Tell council what is still wrong (10 to 1000 characters).';
+  end if;
+  if coalesce(p_photo_url, '') = '' or not public.valid_photo_url(p_photo_url, auth.uid()) then
+    raise exception 'A photo you took of the problem is required.';
+  end if;
+  if (select count(*) from public.repair_updates
+       where actor_id = auth.uid() and action = 'Reopen requested' and created_at > now() - interval '1 day') >= 3 then
+    raise exception 'You have asked to reopen 3 repairs today. Please try again tomorrow.';
+  end if;
+
+  perform set_config('roadfix.trusted', 'on', true);
+  insert into public.repair_updates (defect_id, action, note, photo_url, actor_id, actor_role,
+                                     photo_source, photo_hash, photo_taken_at, photo_lat, photo_lng, photo_accuracy,
+                                     captured_offline)
+  values (d.id, 'Reopen requested', trim(p_note), p_photo_url, auth.uid(), 'citizen',
+          p_photo->>'photo_source', p_photo->>'photo_hash', (p_photo->>'photo_taken_at')::timestamptz,
+          (p_photo->>'photo_lat')::numeric, (p_photo->>'photo_lng')::numeric, (p_photo->>'photo_accuracy')::numeric,
+          coalesce((p_photo->>'captured_offline')::boolean, false));
+  update public.defects set reopen_requested_at = now() where id = d.id;
+  perform set_config('roadfix.trusted', 'off', true);
+end $$ language plpgsql security definer set search_path = public;
+
+grant execute on function public.request_reopen(text, text, text, jsonb) to authenticated;
+
+-- ─── Council merges a duplicate into the original report ───────────
+-- Backing and followers move to the original (the duplicate's reporter backs and follows it too),
+-- and the duplicate is closed with a link to the original.
+create or replace function public.merge_defects(p_from text, p_into text)
+returns void as $$
+declare f public.defects%rowtype; t public.defects%rowtype;
+begin
+  if not public.is_admin() then raise exception 'Only council can merge reports.'; end if;
+  if p_from = p_into then raise exception 'Choose a different report to merge into.'; end if;
+  select * into f from public.defects where id = p_from for update;
+  select * into t from public.defects where id = p_into for update;
+  if f.id is null then raise exception 'Report % not found.', p_from; end if;
+  if t.id is null then raise exception 'Report % not found.', p_into; end if;
+  if f.status not in ('pending', 'assigned', 'progress') then
+    raise exception '% is already closed, so it can''t be merged.', f.id;
+  end if;
+  if t.status not in ('pending', 'assigned', 'progress') then
+    raise exception '% is closed. Merge into a report that is still open.', t.id;
+  end if;
+
+  perform set_config('roadfix.trusted', 'on', true);
+  insert into public.votes (defect_id, user_id)
+  select t.id, u from (
+    select v.user_id as u from public.votes v where v.defect_id = f.id
+    union select f.reported_by
+  ) x
+  where u is not null and u is distinct from t.reported_by
+  on conflict do nothing;
+
+  insert into public.followers (defect_id, user_id)
+  select t.id, u from (
+    select fl.user_id as u from public.followers fl where fl.defect_id = f.id
+    union select f.reported_by
+  ) x
+  where u is not null
+  on conflict do nothing;
+
+  update public.defects
+     set status = 'rejected', merged_into = t.id, contractor_id = null, accepted_at = null,
+         reject_reason = 'Duplicate of ' || t.id || '. Its backing and followers were moved there.'
+   where id = f.id;
+  perform set_config('roadfix.trusted', 'off', true);
+
+  insert into public.repair_updates (defect_id, action, note, actor_id, actor_role)
+  values (f.id, 'Merged as duplicate', 'Same defect as ' || t.id || '. Follow that report for updates.', auth.uid(), 'admin'),
+         (t.id, 'Duplicate merged', f.id || ' was the same defect and has been merged into this report.', auth.uid(), 'admin');
+end $$ language plpgsql security definer set search_path = public;
+
+grant execute on function public.merge_defects(text, text) to authenticated;
+
+-- ─── Phone notifications (web push) ───────────────────────────────
+-- One row per phone or browser that turned notifications on. The "push" Edge Function
+-- sends each new notification to the recipient's devices.
+create table public.push_subscriptions (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references public.profiles(id) on delete cascade,
+  endpoint   text not null unique check (endpoint ~ '^https://' and char_length(endpoint) <= 1000),
+  p256dh     text not null check (char_length(p256dh) <= 200),
+  auth       text not null check (char_length(auth) <= 100),
+  created_at timestamptz not null default now()
+);
+create index idx_push_user on public.push_subscriptions(user_id);
+alter table public.push_subscriptions enable row level security;
+
+create policy "Push: users see and remove their own devices"
+  on public.push_subscriptions for select using (auth.uid() = user_id);
+create policy "Push: users delete their own devices"
+  on public.push_subscriptions for delete using (auth.uid() = user_id);
+
+-- Saves this device for the signed-in user. A device moves to whoever signed in on it last.
+create or replace function public.save_push_subscription(p_endpoint text, p_p256dh text, p_auth text)
+returns void as $$
+begin
+  if auth.uid() is null then raise exception 'Sign in to turn on notifications.'; end if;
+  if (select count(*) from public.push_subscriptions where user_id = auth.uid() and endpoint <> p_endpoint) >= 10 then
+    raise exception 'Notifications are on for 10 devices already. Turn them off on one first.';
+  end if;
+  delete from public.push_subscriptions where endpoint = p_endpoint;
+  insert into public.push_subscriptions (user_id, endpoint, p256dh, auth) values (auth.uid(), p_endpoint, p_p256dh, p_auth);
+end $$ language plpgsql security definer set search_path = public;
+
+grant execute on function public.save_push_subscription(text, text, text) to authenticated;
+
+-- Hands the Edge Function the notifications not sent yet (each one only once)
+create or replace function public.claim_push_batch()
+returns table (id uuid, user_id uuid, defect_id text, defect_title text, title text, body text) as $$
+  update public.notifications n set pushed_at = now()
+   where n.id in (select x.id from public.notifications x
+                   where x.pushed_at is null and x.created_at > now() - interval '1 day'
+                   order by x.created_at limit 200 for update skip locked)
+  returning n.id, n.user_id, n.defect_id, n.defect_title, n.title, n.body;
+$$ language sql volatile security definer set search_path = public;
+
+revoke execute on function public.claim_push_batch() from public, anon, authenticated;
+grant execute on function public.claim_push_batch() to service_role;
 
 
 -- ═══════════════════════════════════════════════════════════════════

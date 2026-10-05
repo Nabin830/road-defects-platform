@@ -5,7 +5,10 @@ import { useAuth } from '../store/auth';
 import { useUI } from '../store/ui';
 import { SeverityChip } from '../components/Severity';
 import { StatusBadge } from '../components/Badge';
-import { relativeTime } from '../lib/utils';
+import { directionsUrl, distanceLabel, isNetworkError, metres, relativeTime } from '../lib/utils';
+import { readCopy, saveCopy } from '../lib/cache';
+import { OutboxList } from '../components/Outbox';
+import { IconCrosshair, IconMap } from '../lib/icons';
 import { SlaChip } from '../components/SlaChip';
 import { slaStatus } from '../lib/sla';
 import type { Contractor, Defect } from '../lib/types';
@@ -18,6 +21,9 @@ export function ContractorPage() {
   const [contractor, setContractor] = useState<Contractor | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [savedAt, setSavedAt] = useState<string | null>(null);   // showing the copy saved on this phone
+  const [here, setHere] = useState<{ lat: number; lng: number } | null>(null);
+  const [locating, setLocating] = useState(false);
   const { toast } = useUI();
   const contractorId = profile?.contractor_id || null;
 
@@ -25,14 +31,35 @@ export function ContractorPage() {
     if (!contractorId) { setRows([]); setContractor(null); return; }
     setLoading(true);
     setFailed(false);
-    api.contractorQueue(contractorId).then(setRows)
-      .catch(() => { setFailed(true); toast('error', "Couldn't load your jobs", 'Check your connection, then refresh the page.'); })
+    api.contractorQueue(contractorId)
+      .then(r => { setRows(r); setSavedAt(null); saveCopy(`jobs:${contractorId}`, r); })
+      .catch((err) => {
+        // No signal: show the jobs as they were last loaded on this phone
+        const copy = readCopy<Defect[]>(`jobs:${contractorId}`);
+        if (copy && isNetworkError(err)) { setRows(copy.data); setSavedAt(copy.at); return; }
+        setFailed(true);
+        toast('error', "Couldn't load your jobs", 'Check your connection, then refresh the page.');
+      })
       .finally(() => setLoading(false));
     api.listContractors().then(list => setContractor(list.find(c => c.id === contractorId) || null)).catch(() => {});
   }, [contractorId, toast]);
 
-  const assigned = rows.filter(r => r.status === 'assigned');
-  const progress = rows.filter(r => r.status === 'progress');
+  /** Sorts jobs nearest first, from where the crew is now. */
+  function nearestFirst() {
+    if (here) { setHere(null); return; }
+    if (!('geolocation' in navigator)) return toast('error', 'Location unavailable', 'This device has no location service.');
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      p => { setHere({ lat: p.coords.latitude, lng: p.coords.longitude }); setLocating(false); },
+      () => { setLocating(false); toast('error', 'Could not get your location', 'Allow location for this site, then try again.'); },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
+    );
+  }
+  const away = (r: Defect) => (here ? metres(here.lat, here.lng, r.latitude, r.longitude) : null);
+  const sortRows = (list: Defect[]) => (here ? [...list].sort((a, b) => away(a)! - away(b)!) : list);
+
+  const assigned = sortRows(rows.filter(r => r.status === 'assigned'));
+  const progress = sortRows(rows.filter(r => r.status === 'progress'));
   const done     = rows.filter(r => r.status === 'completed');
   const needsResponse = assigned.filter(r => !r.accepted_at).length;
   const lateJobs = rows.filter(r => slaStatus(r)?.overdue);
@@ -63,6 +90,21 @@ export function ContractorPage() {
         </p>
       </div>
 
+      {savedAt && (
+        <div className="mb-5 p-3 rounded-card border bg-am-50 border-am-500/25 text-am-700 text-[13px]">
+          <b>No internet — showing your jobs as they were at {new Date(savedAt).toLocaleString('en-AU', { hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' })}.</b>{' '}
+          You can still open a job and accept it, start it, or add photos; it's sent when you're back online.
+        </div>
+      )}
+
+      <OutboxList />
+
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <button className={`btn btn-sm ${here ? 'btn-primary' : 'btn-secondary'}`} onClick={nearestFirst} disabled={locating}>
+          <IconCrosshair size={14} /> {locating ? 'Finding you…' : here ? 'Nearest first (on)' : 'Sort nearest first'}
+        </button>
+      </div>
+
       {(lateJobs.length > 0 || soonJobs.length > 0) && (
         <div role="alert" className={`mb-5 p-4 rounded-card border ${lateJobs.length ? 'bg-rd-50 border-rd-600/30 text-rd-700' : 'bg-am-50 border-am-500/30 text-am-700'}`}>
           <div className="font-bold text-[14px] mb-1">
@@ -79,15 +121,15 @@ export function ContractorPage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Column title="Assigned" count={assigned.length} rows={assigned} />
-        <Column title="In progress" count={progress.length} rows={progress} />
-        <Column title="Completed" count={done.length} rows={done} />
+        <Column title="Assigned" count={assigned.length} rows={assigned} away={away} />
+        <Column title="In progress" count={progress.length} rows={progress} away={away} />
+        <Column title="Completed" count={done.length} rows={done} away={away} />
       </div>
     </main>
   );
 }
 
-function Column({ title, count, rows }: { title: string; count: number; rows: Defect[] }) {
+function Column({ title, count, rows, away }: { title: string; count: number; rows: Defect[]; away: (r: Defect) => number | null }) {
   return (
     <div className="bg-bg-alt border border-border rounded-card p-3">
       <header className="flex items-center gap-2 px-1 pb-3">
@@ -97,8 +139,8 @@ function Column({ title, count, rows }: { title: string; count: number; rows: De
       <div className="grid gap-2.5">
         {rows.length === 0 && <div className="p-8 text-center text-[12.5px] text-muted">Nothing here.</div>}
         {rows.map(r => (
-          <Link key={r.id} to={`/defect/${r.id}`}
-                className="card card-hover p-3.5 hover:no-underline block">
+          <div key={r.id} className="card card-hover overflow-hidden">
+          <Link to={`/defect/${r.id}`} className="p-3.5 hover:no-underline block">
             <div className="flex items-center justify-between gap-2 mb-1.5">
               <span className="mono text-xs text-muted">{r.id}</span>
               <SeverityChip level={r.severity} />
@@ -126,6 +168,15 @@ function Column({ title, count, rows }: { title: string; count: number; rows: De
               <div className="prog mt-2"><i style={{ width: `${r.progress}%` }} /></div>
             )}
           </Link>
+          {r.status !== 'completed' && (
+            <div className="flex items-center justify-between gap-2 px-3.5 py-2 border-t border-border bg-surface-2">
+              <span className="text-[12px] text-muted">{away(r) != null ? `${distanceLabel(away(r)!)} away` : r.road}</span>
+              <a href={directionsUrl(r.latitude, r.longitude)} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary hover:no-underline">
+                <IconMap size={14} /> Navigate
+              </a>
+            </div>
+          )}
+          </div>
         ))}
       </div>
     </div>

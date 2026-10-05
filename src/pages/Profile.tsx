@@ -4,7 +4,8 @@ import { useAuth } from '../store/auth';
 import { useUI } from '../store/ui';
 import { HAS_SUPABASE } from '../lib/supabase';
 import { initialsOf, errorMessage } from '../lib/utils';
-import { IconCheck, IconLock, IconUser, IconTruck } from '../lib/icons';
+import { IconCheck, IconLock, IconUser, IconTruck, IconBell } from '../lib/icons';
+import { disablePush, enablePush, isPushOn, pushUnavailableReason } from '../lib/push';
 import type { Contractor } from '../lib/types';
 import { useSeo } from '../lib/seo';
 import { ROLE_LABEL } from '../lib/constants';
@@ -121,6 +122,8 @@ export function ProfilePage() {
         </footer>
       </form>
 
+      <PhoneNotifications />
+
       <form onSubmit={savePassword} className="card">
         <div className="card-head"><IconLock size={17} /><h3 className="text-[17px]">Change password</h3></div>
         <div className="card-body grid sm:grid-cols-2 gap-4">
@@ -138,5 +141,42 @@ export function ProfilePage() {
         </footer>
       </form>
     </main>
+  );
+}
+
+/** Turn phone notifications on or off for this device. */
+function PhoneNotifications() {
+  const { toast } = useUI();
+  const [on, setOn] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const unavailable = pushUnavailableReason();
+  useEffect(() => { void isPushOn().then(setOn); }, []);
+
+  async function toggle() {
+    setBusy(true);
+    try {
+      if (on) { await disablePush(); setOn(false); toast('info', 'Notifications off', 'This device will no longer get RoadFix notifications.'); }
+      else { await enablePush(); setOn(true); toast('success', 'Notifications on', 'You will get a notification on this device when your reports or jobs change.'); }
+    } catch (err) {
+      toast('error', 'Could not change notifications', errorMessage(err, 'Please try again.'));
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card mb-5">
+      <div className="card-head"><IconBell size={17} /><h3 className="text-[17px]">Phone notifications</h3></div>
+      <div className="card-body flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[13.5px] text-muted max-w-[460px]">
+          {unavailable ?? (on
+            ? 'On for this device. You get a notification when a report you made or follow changes, or a job is assigned to you.'
+            : 'Get a notification on this device when a report you made or follow changes — no need to keep checking the app.')}
+        </p>
+        {!unavailable && (
+          <button className={`btn ${on ? 'btn-secondary' : 'btn-primary'}`} disabled={busy} onClick={() => void toggle()}>
+            {busy ? 'Please wait…' : on ? 'Turn off' : 'Turn on'}
+          </button>
+        )}
+      </div>
+    </div>
   );
 }

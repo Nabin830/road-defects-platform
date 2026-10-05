@@ -4,12 +4,12 @@ import { useUI } from '../store/ui';
 import { dueDate, slaStatus } from '../lib/sla';
 import { TYPES } from '../lib/constants';
 import { ColumnChart, BarList } from '../components/Charts';
-import type { Contractor, Defect, RepairUpdate } from '../lib/types';
+import type { Contractor, Defect, Profile, RepairUpdate } from '../lib/types';
 import { IconDownload } from '../lib/icons';
 import { useSeo } from '../lib/seo';
 import { errorMessage } from '../lib/utils';
 
-type Milestone = Pick<RepairUpdate, 'defect_id' | 'action' | 'created_at'>;
+type Milestone = Pick<RepairUpdate, 'defect_id' | 'action' | 'created_at' | 'actor_id'>;
 const RANGES = [3, 6, 12] as const;
 const DAY = 86400000;
 
@@ -33,11 +33,12 @@ export function ReportsPage() {
   const [defects, setDefects] = useState<Defect[]>([]);
   const [contractors, setContractors] = useState<Contractor[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [people, setPeople] = useState<Profile[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    Promise.all([api.listDefects({}), api.listContractors(), api.listMilestones()])
-      .then(([d, c, m]) => { setDefects(d); setContractors(c); setMilestones(m); })
+    Promise.all([api.listDefects({}), api.listContractors(), api.listMilestones(), api.listProfiles().catch(() => [] as Profile[])])
+      .then(([d, c, m, p]) => { setDefects(d); setContractors(c); setMilestones(m); setPeople(p); })
       .catch((err) => toast('error', 'Could not load reports', errorMessage(err, 'Please refresh.')))
       .finally(() => setLoaded(true));
   }, [toast]);
@@ -82,6 +83,22 @@ export function ReportsPage() {
     const byType = TYPES.map(t => ({ label: t.label, value: reportedInRange.filter(d => d.defect_type === t.id).length }))
       .filter(x => x.value > 0).sort((a, b) => b.value - a.value);
 
+    // Rework goes against the company holding the job; a decline against the company of the person who declined
+    const companyOf = new Map(people.map(p => [p.id, p.contractor_id]));
+    const reworkFor = new Map<string, number>();
+    const declinedBy = new Map<string, number>();
+    const holder = new Map(defects.map(d => [d.id, d.contractor_id]));
+    for (const m of milestones) {
+      if (!inRange(m.created_at)) continue;
+      if (m.action === 'Rework requested') {
+        const c = holder.get(m.defect_id);
+        if (c) reworkFor.set(c, (reworkFor.get(c) ?? 0) + 1);
+      } else if (m.action === 'Contractor declined') {
+        const c = m.actor_id ? companyOf.get(m.actor_id) : null;
+        if (c) declinedBy.set(c, (declinedBy.get(c) ?? 0) + 1);
+      }
+    }
+
     const byContractor = contractors.map(c => {
       const jobs = defects.filter(d => d.contractor_id === c.id);
       const done = jobs.filter(d => inRange(d.verified_at));
@@ -95,6 +112,8 @@ export function ReportsPage() {
         verified: done.length,
         onTime: pct(done.filter(d => +finishedAt(d) <= +dueDate(d)).length, done.length),
         turnaround: median(turnaround),
+        rework: reworkFor.get(c.id) ?? 0,
+        declined: declinedBy.get(c.id) ?? 0,
       };
     }).sort((a, b) => b.verified - a.verified || b.open - a.open);
 
@@ -111,7 +130,7 @@ export function ReportsPage() {
       },
       byType, byContractor,
     };
-  }, [defects, contractors, milestones, range]);
+  }, [defects, contractors, milestones, people, range]);
 
   const k = r.kpi;
   const tiles = [
@@ -189,20 +208,20 @@ export function ReportsPage() {
         <section className="card overflow-hidden">
           <div className="card-head">
             <h3 className="flex-1 text-[17px]">Contractor performance</h3>
-            <span className="text-[12px] text-muted">Verified and turnaround: last {range} months · open and overdue: now</span>
+            <span className="text-[12px] text-muted">Verified, turnaround, rework and declines: last {range} months · open and overdue: now</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-[13.5px]">
               <thead>
                 <tr className="bg-surface-2 border-b border-border">
-                  {['Contractor', 'Open jobs', 'Overdue', 'Verified', 'On time', 'Median turnaround'].map((h, i) => (
+                  {['Contractor', 'Open jobs', 'Overdue', 'Verified', 'On time', 'Median turnaround', 'Sent back', 'Declined'].map((h, i) => (
                     <th key={h} className={`px-4 py-2.5 text-[11px] font-bold uppercase tracking-widest text-muted whitespace-nowrap ${i ? 'text-right' : 'text-left'}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {r.byContractor.length === 0 && (
-                  <tr><td colSpan={6} className="p-8 text-center text-muted">No contractors yet.</td></tr>
+                  <tr><td colSpan={8} className="p-8 text-center text-muted">No contractors yet.</td></tr>
                 )}
                 {r.byContractor.map(x => (
                   <tr key={x.c.id} className="border-b border-border last:border-0">
@@ -212,6 +231,8 @@ export function ReportsPage() {
                     <td className="px-4 py-3 text-right mono">{x.verified}</td>
                     <td className="px-4 py-3 text-right mono">{x.onTime == null ? '—' : `${x.onTime}%`}</td>
                     <td className="px-4 py-3 text-right mono">{x.turnaround == null ? '—' : duration(x.turnaround)}</td>
+                    <td className={`px-4 py-3 text-right mono ${x.rework ? 'text-am-700 font-bold' : ''}`} title="Times council sent a finished repair back for rework">{x.rework}</td>
+                    <td className="px-4 py-3 text-right mono" title="Jobs this company turned down">{x.declined}</td>
                   </tr>
                 ))}
               </tbody>
