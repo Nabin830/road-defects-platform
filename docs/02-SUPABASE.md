@@ -211,7 +211,6 @@ Profile page says notifications aren't set up, and the bell in the app still wor
 
 ## Service area
 
-Reports are accepted only inside the Orange City Council area. To test from somewhere else, widen both
-`COUNCIL_AREA` in `src/lib/constants.ts` and `in_council_area()` in `supabase/Database.sql` (the all-of-Australia
-values are in the comments next to them), and put them back before going live.
-
+Reports are accepted anywhere in Australia for now. To limit them to the Orange City Council area,
+change `COUNCIL_AREA` in `src/lib/constants.ts` and `in_council_area()` in `supabase/Database.sql`
+(the Orange values are in the comments next to them).

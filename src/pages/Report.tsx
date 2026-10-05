@@ -212,7 +212,7 @@ export function ReportPage() {
     if (step === 1 && mobile && (accuracy == null || accuracy > MAX_GPS_ACCURACY_M)) {
       return toast('warning', 'GPS signal too weak', `Your location is only accurate to ${accuracy == null ? '?' : Math.round(accuracy)} m. Move into the open and tap "Use my location" again.`);
     }
-    if (step === 1 && !inCouncilArea(lat!, lng!)) return toast('warning', 'Outside the service area', 'RoadFix only covers roads in the Orange City Council area. Move the pin to a road in Orange.');
+    if (step === 1 && !inCouncilArea(lat!, lng!)) return toast('warning', 'Outside the service area', 'RoadFix only covers roads in Australia. Move the pin to a road in Australia.');
     if (step === 1 && blocking) return toast('warning', 'Already reported', `${blocking.d.id} was reported ${Math.round(blocking.m)} m away in the last hour. Open it and tap "Back this report" instead.`);
     if (step === 1 && !place.trim()) return toast('warning', 'Add the road name', 'Tell the crew which road or landmark it is near.');
     if (step === 2 && (!type || !sev)) return toast('warning', 'Missing details', 'Choose a type and severity.');
@@ -225,7 +225,7 @@ export function ReportPage() {
     if (lat == null || lng == null || !type || !sev || !titleOk || !descOk) {
       return toast('warning', 'Fill in required fields', 'Something is missing.');
     }
-    if (!inCouncilArea(lat, lng)) return toast('warning', 'Outside the service area', 'Move the pin to a road in the Orange City Council area.');
+    if (!inCouncilArea(lat, lng)) return toast('warning', 'Outside the service area', 'Move the pin to a road in Australia.');
     if (!photo) return toast('warning', 'Add a photo', 'A photo of the defect is required so council can assess it.');
     if (mobile && photo.meta.photo_source !== 'camera') return toast('warning', 'Take a photo', 'On a phone the photo must be taken with the camera.');
     const far = photoTooFar(photo);

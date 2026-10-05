@@ -680,12 +680,12 @@ returns boolean as $$
   select coalesce(current_setting('roadfix.trusted', true), '') = 'on';
 $$ language sql stable set search_path = public;
 
--- Where reports are accepted: the Orange City Council area (matches the app's COUNCIL_AREA).
--- To test from somewhere else, temporarily widen it — all of Australia is:
---   select lat between -44.0 and -9.0 and lng between 112.0 and 154.0;
+-- Where reports are accepted: all of Australia (incl. Tasmania) for now (matches the app's COUNCIL_AREA).
+-- Orange City Council only is:
+--   select lat between -33.48 and -33.12 and lng between 148.88 and 149.30;
 create or replace function public.in_council_area(lat numeric, lng numeric)
 returns boolean as $$
-  select lat between -33.48 and -33.12 and lng between 148.88 and 149.30;
+  select lat between -44.0 and -9.0 and lng between 112.0 and 154.0;
 $$ language sql immutable set search_path = public;
 
 -- Columns whose value differs between two versions of a row (ignores updated_at)
@@ -727,7 +727,7 @@ begin
   new.reject_reason := null;         new.work_instructions := null; new.due_at := null;
   new.reported_at := now();          new.updated_at := now();
   if not public.in_council_area(new.latitude, new.longitude) then
-    raise exception 'RoadFix only covers roads in the Orange City Council area.';
+    raise exception 'RoadFix only covers roads in Australia.';
   end if;
   return new;
 end $$ language plpgsql security definer set search_path = public;
@@ -753,7 +753,7 @@ begin
     allowed := array['title', 'description', 'photo_url', 'road', 'suburb', 'latitude', 'longitude',
                      'defect_type', 'depth', 'width'];
     if not public.in_council_area(new.latitude, new.longitude) then
-      raise exception 'RoadFix only covers roads in the Orange City Council area.';
+      raise exception 'RoadFix only covers roads in Australia.';
     end if;
   else
     raise exception 'You can''t change this report.';
