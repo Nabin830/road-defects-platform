@@ -1,7 +1,10 @@
 import type { PhotoMeta } from './evidence';
 
 /** Photo details saved with a report or timeline photo; photo_flags is set by the database. */
-export type PhotoInfo = Partial<PhotoMeta> & { photo_flags?: string[] | null };
+export type PhotoInfo = Partial<PhotoMeta> & {
+  photo_flags?: string[] | null;
+  captured_offline?: boolean | null;   // reports only: saved on the phone offline and sent later
+};
 
 // ─── Enums / literal types ───────────────────────────────────────────
 export type Role = 'citizen' | 'contractor' | 'admin';

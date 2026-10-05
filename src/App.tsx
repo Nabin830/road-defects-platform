@@ -8,6 +8,8 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { useSeo } from './lib/seo';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { HomePage } from './pages/Home';
+import { OfflineBar } from './components/Outbox';
+import { syncOutbox } from './lib/outbox';
 
 // Each page's code loads only when someone opens it (council and contractor pages aren't sent to residents)
 const page = <K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) =>
@@ -30,6 +32,9 @@ const TermsPage = page(() => import('./pages/Legal'), 'TermsPage');
 export function App() {
   const loc = useLocation();
   const refreshProfile = useAuth(s => s.refreshProfile);
+  const userId = useAuth(s => s.userId);
+  // Just signed in: send any reports this person saved offline
+  useEffect(() => { if (userId) void syncOutbox(); }, [userId]);
   // Pick up role changes made by council (e.g. promoted to admin) without signing out and in again
   useEffect(() => {
     const onFocus = () => { refreshProfile().catch(() => {}); };
@@ -44,6 +49,7 @@ export function App() {
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
+      <OfflineBar />
       <div className="flex-1 flex flex-col">
         <ErrorBoundary resetKey={loc.pathname}>
           {/* Tall placeholder while a page's code loads, so the footer doesn't jump when it arrives */}

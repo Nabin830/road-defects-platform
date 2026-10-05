@@ -7,6 +7,7 @@ import { DefectCard } from '../components/DefectCard';
 import { IconPlus } from '../lib/icons';
 import type { Defect } from '../lib/types';
 import { useSeo } from '../lib/seo';
+import { OutboxList } from '../components/Outbox';
 
 export function MyReportsPage() {
   useSeo({ title: 'My reports', noindex: true });
@@ -18,7 +19,7 @@ export function MyReportsPage() {
 
   useEffect(() => {
     if (userId) api.myReports(userId).then(setMine)
-      .catch(() => toast('error', "Couldn't load your reports", 'Check your connection, then refresh the page.'))
+      .catch(() => { if (navigator.onLine) toast('error', "Couldn't load your reports", 'Check your connection, then refresh the page.'); })
       .finally(() => setLoading(false));
   }, [userId, toast]);
 
@@ -35,6 +36,8 @@ export function MyReportsPage() {
         </div>
         <Link to="/report" className="btn btn-primary hover:no-underline"><IconPlus size={16} /> New report</Link>
       </div>
+
+      <OutboxList />
 
       <div className="flex gap-2 mb-5">
         {(['all', 'active', 'done'] as const).map(t => (

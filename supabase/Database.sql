@@ -18,6 +18,8 @@
 --                           the website lets it change
 --                         • photo checks: live camera vs upload, GPS,
 --                           reused-photo fingerprints (flags for council)
+--                         • offline reports: sent later from the phone,
+--                           strict rules + always flagged for council
 --   STEP 3. FOLLOWERS — "follow updates" table + in-app notifications
 --   STEP 4. STORAGE   — defect-photos bucket + policies
 --   STEP 5. USERS     — makes council@gmail.com a confirmed council admin
@@ -800,18 +802,25 @@ create trigger trg_updates_guard before insert on public.repair_updates
   for each row execute function public.guard_timeline_entry();
 
 
--- Photo links must point at this project's photo bucket — never "javascript:" or other sites
-create or replace function public.valid_photo_url(u text)
+-- Photo links must point at a photo this person really uploaded to the RoadFix bucket:
+-- inside their own folder, one plain file name (no "../" tricks), and the file must exist.
+-- That stops "javascript:" links, links to other sites, and borrowing someone else's photo.
+-- (The website also refuses to show photo links from any other address.)
+create or replace function public.valid_photo_url(u text, uploader uuid)
 returns boolean as $$
-  select u is null or u ~ '^https://[^/?#]+/storage/v1/object/public/defect-photos/[^?#]+$';
-$$ language sql immutable set search_path = public;
+  select u is null or (
+    u ~ ('^https://[^/?#]+/storage/v1/object/public/defect-photos/' || uploader::text || '/[A-Za-z0-9_-][A-Za-z0-9._-]{0,120}$')
+    and exists (select 1 from storage.objects o
+                 where o.bucket_id = 'defect-photos'
+                   and o.name = substring(u from '/defect-photos/(.+)$')));
+$$ language sql stable security definer set search_path = public;
 
 create or replace function public.check_photo_urls()
 returns trigger as $$
 begin
   if auth.uid() is null or public.is_admin() then return new; end if;
-  if not public.valid_photo_url(new.photo_url) then
-    raise exception 'Photos must be uploaded through RoadFix.';
+  if not public.valid_photo_url(new.photo_url, auth.uid()) then
+    raise exception 'Photos must be taken and uploaded through RoadFix by you.';
   end if;
   return new;
 end $$ language plpgsql security definer set search_path = public;
@@ -925,7 +934,9 @@ alter table public.defects
   add column if not exists photo_lat      numeric(10,7),
   add column if not exists photo_lng      numeric(10,7),
   add column if not exists photo_accuracy numeric(9,1),
-  add column if not exists photo_flags    text[] not null default '{}';
+  add column if not exists photo_flags    text[] not null default '{}',
+  -- Saved on the phone with no signal and sent later (see "Offline reports" in check_photo_evidence)
+  add column if not exists captured_offline boolean not null default false;
 
 alter table public.repair_updates
   add column if not exists photo_source   text check (photo_source in ('camera', 'upload')),
@@ -950,6 +961,7 @@ declare
   pin_lng  numeric;
   far_flag text;
   self_id  text;      -- the defect this photo belongs to
+  offline  boolean := false;
 begin
   if tg_table_name = 'defects' then
     -- Warnings belong to the photo: they only change when a new photo is attached
@@ -960,6 +972,7 @@ begin
       end if;
     end if;
     pin_lat := new.latitude; pin_lng := new.longitude; far_flag := 'far_from_pin'; self_id := new.id;
+    offline := new.captured_offline;   -- read here: repair_updates rows have no such column
   else
     select latitude, longitude into pin_lat, pin_lng from public.defects where id = new.defect_id;
     far_flag := 'far_from_defect'; self_id := new.defect_id;
@@ -968,6 +981,27 @@ begin
   if coalesce(new.photo_url, '') = '' then
     new.photo_flags := '{}';
     return new;
+  end if;
+
+  -- Offline reports: saved on the phone with no signal and sent later. The photo's time and GPS
+  -- were recorded by the phone alone, with no server to check them against, so only a live
+  -- camera photo with GPS, taken in the last 3 days and after the account was created, is
+  -- accepted — and council always sees an "offline" warning. Everything else (rate limits,
+  -- duplicate blocking, council area, reused-photo check) still runs when it is sent.
+  if offline then
+    if tg_op = 'INSERT' then
+      if new.photo_source is distinct from 'camera' or new.photo_taken_at is null
+         or new.photo_lat is null or new.photo_lng is null then
+        raise exception 'Reports saved offline need a live camera photo with GPS.';
+      end if;
+      if new.photo_taken_at > now() + interval '5 minutes' or new.photo_taken_at < now() - interval '3 days' then
+        raise exception 'Reports saved offline must be sent within 3 days of taking the photo.';
+      end if;
+      if new.photo_taken_at < (select created_at from public.profiles where id = new.reported_by) then
+        raise exception 'This photo was taken before your account was created.';
+      end if;
+    end if;
+    flags := flags || 'offline'::text;
   end if;
 
   if new.photo_source is distinct from 'camera' then
@@ -983,8 +1017,9 @@ begin
         flags := flags || far_flag;
       end if;
     end if;
-    if new.photo_taken_at is null or new.photo_taken_at > now() + interval '5 minutes'
-       or new.photo_taken_at < now() - interval '1 hour' then
+    -- (offline reports get the 3-day window above instead)
+    if not offline and (new.photo_taken_at is null or new.photo_taken_at > now() + interval '5 minutes'
+       or new.photo_taken_at < now() - interval '1 hour') then
       flags := flags || 'clock_mismatch'::text;
     end if;
   end if;

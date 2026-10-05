@@ -9,6 +9,8 @@ export const MAX_GPS_ACCURACY_M = 100;
 export const WEAK_GPS_M = 30;
 /** How far a report photo may be taken from the reported spot. Must match the database. */
 export const MAX_PHOTO_DISTANCE_M = 150;
+/** A report saved offline must be sent within this long of taking its photo. Must match the database. */
+export const OFFLINE_MAX_AGE_DAYS = 3;
 
 export type PhotoSource = 'camera' | 'upload';
 
@@ -142,4 +144,5 @@ export const PHOTO_FLAG_LABEL: Record<string, string> = {
   far_from_pin: `Photo was taken more than ${MAX_PHOTO_DISTANCE_M} m from the reported spot`,
   far_from_defect: `Photo was taken more than ${MAX_PHOTO_DISTANCE_M} m from the defect`,
   clock_mismatch: "The phone's clock didn't match the server time when it was sent",
+  offline: "Saved on the phone with no internet and sent later — its time and GPS come from the phone alone and couldn't be checked live",
 };

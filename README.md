@@ -40,7 +40,11 @@ Council accounts are granted in the database, never by sign-up. `council@gmail.c
 Every rule is enforced in Postgres (row-level security + triggers), not just in the browser:
 
 - Stage order: pending → assigned → in progress → completed → verified (no skipping)
-- Required photos on reports, progress updates and completion; photo links must point at the RoadFix bucket
+- Required photos on reports, progress updates and completion; a photo link must be a file the poster really
+  uploaded into their own folder of the RoadFix bucket (the app also refuses to show photos from anywhere else)
+- Offline reports (saved on the phone with no signal, sent later): live camera photo with GPS only, sent within
+  3 days of the photo, never dated before the account existed, always flagged "offline" for council — and all
+  the other rules still apply when it's sent
 - Spam limits (1 report a minute, 10 a day), no new report within 150 m of an open one from the last hour,
   reports only inside the Orange council area, text length limits
 - Each role can only change what the app lets it change (no fake votes, severities, dates or council entries)

@@ -9,6 +9,7 @@ import './index.css';
 import { App } from './App';
 import { useAuth } from './store/auth';
 import { useUI } from './store/ui';
+import { startOutbox } from './lib/outbox';
 
 // Old links used hash addresses (/#/defects). Turn them into real paths before the router starts,
 // so shared and bookmarked links keep working — and search engines see one address per page.
@@ -19,6 +20,8 @@ if (window.location.hash.startsWith('#/')) {
 // initialize theme + auth once
 useUI.getState().setTheme(useUI.getState().theme);
 useAuth.getState().init().catch((err) => console.error('[RoadFix] sign-in check failed:', err));
+// Reports saved with no internet are sent from here whenever the connection is back
+startOutbox();
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>

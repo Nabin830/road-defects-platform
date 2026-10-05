@@ -11,11 +11,16 @@ import type { Defect, DefectType, Severity } from '../lib/types';
 import { SeverityChip } from '../components/Severity';
 import { StatusBadge } from '../components/Badge';
 import { useSeo } from '../lib/seo';
-import { errorMessage, metres } from '../lib/utils';
+import { errorMessage, isNetworkError, metres, newDefectId } from '../lib/utils';
 import { PhotoField } from '../components/PhotoField';
 import { isMobileDevice, MAX_GPS_ACCURACY_M, MAX_PHOTO_DISTANCE_M, type PhotoEvidence } from '../lib/evidence';
+import { saveToOutbox, useOutbox } from '../lib/outbox';
 
 const NEARBY_M = 150;
+
+/** Address placeholder used when the street name can't be looked up (no internet). */
+const nearLabel = (lat: number, lng: number) => `Near ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+const isNearLabel = (s: string) => /^Near -?\d/.test(s);
 
 // Must match the database (check_report_text in supabase/Database.sql), which enforces the same limits
 const TITLE_MIN = 8, TITLE_MAX = 100, DESC_MIN = 20, DESC_MAX = 2000;
@@ -58,6 +63,7 @@ export function ReportPage() {
   // Phones: location comes from GPS only and the photo from the live camera, so neither can be faked by hand
   const mobile = useMemo(isMobileDevice, []);
   const [existing, setExisting] = useState<Defect[]>([]);
+  const online = useOutbox(s => s.online);
 
   useEffect(() => { api.listDefects({}).then(setExisting).catch(() => {}); }, []);
 
@@ -85,10 +91,11 @@ export function ReportPage() {
       setLookingUp(true);
       reverseGeocode(lat, lng, ctrl.signal)
         .then(addr => {
-          if (mobile) setPlace(addr || `Near ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+          if (mobile) setPlace(addr || nearLabel(lat, lng));
           else if (addr && (placeAuto.current || !place.trim())) { setPlace(addr); placeAuto.current = true; }
         })
-        .catch(() => {})
+        // No internet: phones can't type the address, so use the coordinates (looked up again when sent)
+        .catch(() => { if (mobile && !ctrl.signal.aborted) setPlace(nearLabel(lat, lng)); })
         .finally(() => { if (!ctrl.signal.aborted) setLookingUp(false); });
     }, 500);
     return () => { clearTimeout(t); ctrl.abort(); };
@@ -225,22 +232,28 @@ export function ReportPage() {
     if (far) return toast('warning', 'Photo is too far away', far);
     if (blocking) return toast('warning', 'Already reported', `Open ${blocking.d.id} and tap "Back this report" instead.`);
     if (!userId) return toast('warning', 'Sign in required', 'Create an account or sign in to submit a report.');
+    const input = {
+      title: title.trim(), description: desc.trim(), defect_type: type, severity: sev,
+      road: place.trim(), latitude: lat, longitude: lng,
+    };
+    // One ID for this report, online or saved — so it can never be stored twice
+    const id = newDefectId();
     setBusy(true);
     try {
+      if (!navigator.onLine) return await keepOffline(input, id);
       let photo_url: string;
       try {
         photo_url = await api.uploadPhoto(photo.file, userId);
       } catch (err) {
+        if (isNetworkError(err)) return await keepOffline(input, id);
         toast('error', 'Photo upload failed', errorMessage(err, 'Please try again. A photo is required.'));
         return;
       }
       let created;
       try {
-        created = await api.createDefect({
-          title: title.trim(), description: desc.trim(), defect_type: type, severity: sev,
-          road: place.trim(), latitude: lat, longitude: lng, photo_url, photo: photo.meta,
-        }, userId);
+        created = await api.createDefect({ ...input, photo_url, photo: photo.meta }, userId, { id });
       } catch (err) {
+        if (isNetworkError(err)) return await keepOffline(input, id);
         void api.deletePhoto(photo_url);   // the report was refused — don't leave its photo behind
         throw err;
       }
@@ -249,6 +262,25 @@ export function ReportPage() {
     } catch (err) {
       toast('error', 'Could not submit report', errorMessage(err, 'Please try again.'));
     } finally { setBusy(false); }
+  }
+
+  /** No internet: keep the report on this phone and send it when the connection is back.
+   *  Only a live camera photo with GPS qualifies — the database refuses anything else sent later. */
+  async function keepOffline(input: Parameters<typeof saveToOutbox>[0]['input'], id: string) {
+    if (!photo || !userId) return;
+    const m = photo.meta;
+    if (m.photo_source !== 'camera' || m.photo_lat == null || m.photo_lng == null || !m.photo_taken_at) {
+      toast('warning', 'No internet connection', 'To save a report offline, take the photo with the camera at the defect (with GPS on). Or try again when you are connected.');
+      return;
+    }
+    try {
+      await saveToOutbox({ userId, input, meta: m, photo: photo.file, needsAddress: mobile && isNearLabel(input.road), defectId: id });
+    } catch (err) {
+      toast('error', 'Could not save the report', errorMessage(err, 'Please try again.'));
+      return;
+    }
+    toast('success', 'Saved on this phone', 'No internet right now. It will be sent automatically when you are back online — keep RoadFix open or open it again later.');
+    void nav('/my-reports');
   }
 
   return (
@@ -333,6 +365,15 @@ export function ReportPage() {
               {mobile && accuracy != null && accuracy > MAX_GPS_ACCURACY_M && (
                 <span className="text-rd-600 font-sans font-semibold"> · too weak, needs ±{MAX_GPS_ACCURACY_M} m or better</span>
               )}
+            </div>
+          )}
+          {!online && (
+            <div className="mt-5 p-3 rounded-lg border bg-am-50 border-am-500/25 text-[12.5px] text-am-700 flex gap-2">
+              <IconAlert size={15} className="flex-none mt-0.5" />
+              <span>
+                <b>You're offline.</b> You can still make this report — it's saved on this phone and sent when you're back online.
+                Reports already made nearby can't be checked right now; if this one was already reported, it will be refused when it's sent.
+              </span>
             </div>
           )}
           {nearby.length > 0 && (
@@ -459,7 +500,7 @@ export function ReportPage() {
           <button className="btn btn-primary" onClick={next}>Next <IconRight size={16} /></button>
         ) : (
           <button className="btn btn-success" onClick={submit} disabled={busy || !photo} title={photo ? undefined : 'Add a photo first'}>
-            <IconCheck size={16} /> {busy ? 'Submitting…' : 'Submit report'}
+            <IconCheck size={16} /> {busy ? 'Submitting…' : online ? 'Submit report' : 'Save and send later'}
           </button>
         )}
       </div>

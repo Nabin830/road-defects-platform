@@ -1,3 +1,5 @@
+import { HAS_SUPABASE } from './supabase';
+
 /** A readable message from anything that was thrown (Error, Supabase error object, string…). */
 export function errorMessage(err: unknown, fallback = 'Please try again.'): string {
   if (err instanceof Error && err.message) return err.message;
@@ -7,12 +9,30 @@ export function errorMessage(err: unknown, fallback = 'Please try again.'): stri
   return typeof err === 'string' && err ? err : fallback;
 }
 
-/** Photo links come from the database, so never trust them blindly: only web, blob and same-site
- *  addresses are used — a "javascript:" link would otherwise run code when someone clicks the photo. */
+const PHOTO_PATH = '/storage/v1/object/public/defect-photos/';
+const SUPABASE_ORIGIN = (() => {
+  try { return new URL(import.meta.env.VITE_SUPABASE_URL).origin; } catch { return null; }
+})();
+
+/** Photo links come from the database, so never trust them blindly. On the live site only photos in
+ *  this project's own RoadFix bucket are shown — never a "javascript:" link (it would run code when
+ *  clicked) or a picture from another website made to look like a RoadFix photo. Demo mode also
+ *  allows blob and same-site addresses. */
 export function safePhotoUrl(url: string | null | undefined): string | null {
   if (!url) return null;
   const u = url.trim();
-  return /^(https?:\/\/|blob:|\/(?!\/))/i.test(u) ? u : null;
+  if (!HAS_SUPABASE) return /^(https?:\/\/|blob:|\/(?!\/))/i.test(u) ? u : null;
+  try {
+    const parsed = new URL(u);   // resolves "../" so the folder check can't be dodged
+    return parsed.origin === SUPABASE_ORIGIN && parsed.pathname.startsWith(PHOTO_PATH) ? u : null;
+  } catch { return null; }
+}
+
+/** True when a request failed because there was no connection (not because the server refused it). */
+export function isNetworkError(err: unknown): boolean {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  return /failed to fetch|networkerror|network request failed|load failed|fetch failed|network connection was lost|internet connection appears to be offline/i
+    .test(errorMessage(err, ''));
 }
 
 export function relativeTime(iso: string): string {

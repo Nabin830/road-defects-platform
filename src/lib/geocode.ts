@@ -15,10 +15,10 @@ async function lookup<T>(body: LookupBody, directUrl: string, signal?: AbortSign
       const error: unknown = res.error;   // the library types this as `any`
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       if (!error && data && !(data as { error?: string }).error) return data;
-      if (error) proxyAvailable = false;
+      if (error && navigator.onLine) proxyAvailable = false;   // offline isn't "missing"
     } catch (e) {
       if ((e as Error).name === 'AbortError') throw e;
-      proxyAvailable = false;
+      if (navigator.onLine) proxyAvailable = false;
     }
   }
   const res = await fetch(directUrl, { signal, headers: { 'Accept-Language': 'en-AU,en' } });

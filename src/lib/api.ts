@@ -203,8 +203,11 @@ export const api = {
     return rows.map(r => mapDefect(r, myUserId));
   },
 
-  async createDefect(input: CreateDefectInput, userId: string, attempt = 1): Promise<Defect> {
-    const id = newDefectId();
+  /** `opts.id` fixes the report ID up front, so sending the same report twice (e.g. the connection
+   *  dropped after it was saved) returns the saved one instead of creating a copy.
+   *  `opts.offline` marks a report saved on the phone with no internet and sent later. */
+  async createDefect(input: CreateDefectInput, userId: string, opts: { id?: string; offline?: boolean } = {}, attempt = 1): Promise<Defect> {
+    const id = opts.id ?? newDefectId();
     if (!HAS_SUPABASE) {
       const row: Omit<Defect, 'daysAgo' | 'mine'> = {
         id, title: input.title, description: input.description,
@@ -231,11 +234,19 @@ export const api = {
       latitude: input.latitude, longitude: input.longitude,
       photo_url: input.photo_url ?? null,
       ...input.photo,
+      captured_offline: !!opts.offline,
       reported_by: userId,
     };
     const { data, error } = await supabase.from('defects').insert(insert).select().single<DBDefect>();
-    // Two reports generated the same ID in the same second — try once more with a fresh one
-    if (error?.code === '23505' && attempt < 3) return this.createDefect(input, userId, attempt + 1);
+    if (error?.code === '23505' && attempt < 3) {
+      // Already saved by an earlier try of this same report → that's success
+      if (opts.id) {
+        const { data: saved } = await supabase.from('defects').select('*').eq('id', id).maybeSingle<DBDefect>();
+        if (saved?.reported_by === userId) return mapDefect(saved, userId);
+      }
+      // Someone else's report got the same ID in the same second — try again with a fresh one
+      return this.createDefect(input, userId, { ...opts, id: undefined }, attempt + 1);
+    }
     if (error) throw error;
     // The report is saved at this point — a failed timeline entry mustn't make it look like it failed
     await this.addUpdate(id, { action: 'Report submitted', note: 'Report captured with location and description.', progress: 0 }, userId, 'citizen')
@@ -528,16 +539,19 @@ export const api = {
     await supabase.storage.from('defect-photos').remove([decodeURIComponent(publicUrl.slice(i + marker.length))]).catch(() => {});
   },
 
-  async uploadPhoto(original: File, userId: string): Promise<string> {
+  /** `name` (letters, digits, - and _) fixes the file name, so retrying an upload that already
+   *  went through reuses that file instead of storing the photo twice. */
+  async uploadPhoto(original: File, userId: string, name?: string): Promise<string> {
     if (!HAS_SUPABASE) return URL.createObjectURL(original); // local preview only, not persisted
     const file = await shrinkPhoto(original);
     if (file.size > 8 * 1024 * 1024) throw new Error('That photo is too large to upload. Please choose a smaller one.');
     const ext = file.type === 'image/jpeg' ? 'jpg' : file.type.split('/')[1] || 'jpg';
-    const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const path = `${userId}/${name ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`}.${ext}`;
     const { error } = await supabase.storage.from('defect-photos').upload(path, file, {
       cacheControl: '3600', upsert: false, contentType: file.type || 'image/jpeg',
     });
-    if (error) throw error;
+    const alreadyThere = !!name && !!error && /already exists|duplicate/i.test(error.message);
+    if (error && !alreadyThere) throw error;
     const { data } = supabase.storage.from('defect-photos').getPublicUrl(path);
     return data.publicUrl;
   },

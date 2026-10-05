@@ -35,7 +35,7 @@ Then open the **SQL Editor** in your Supabase dashboard, paste the whole of
 - **deletes every sign-in account except `council@gmail.com`** (residents and contractors register again)
 - creates the tables, indexes, triggers and row-level security policies
 - creates the `followers` table and the `defect-photos` storage bucket
-- adds the photo checks (live camera vs upload, GPS, reused-photo fingerprints)
+- adds the photo checks (live camera vs upload, GPS, reused-photo fingerprints) and the offline-report rules
 - makes `council@gmail.com` an admin
 
 No dummy data is inserted — contractors and defects start empty and are created from the app.
@@ -155,3 +155,25 @@ to create one, pick whichever is easier:
 You can have as many admin accounts as council needs — just repeat step 2/the SQL for each staff
 email. There's intentionally no UI for this so a compromised citizen or contractor account can never
 grant itself admin access.
+
+## Offline reports
+
+The site works as an installable app: after one visit it opens with no signal. A resident with no
+internet can still make a report — it's kept on their phone (photo included) and sent automatically
+when the connection is back, one a minute (the normal spam limit). They must have signed in once
+while online on that phone.
+
+Nothing on the phone is trusted. When a saved report is sent, the database runs every normal check
+(sign-in, spam limits, duplicates within 150 m, council area, photo ownership) and these extra ones:
+
+- the photo must be a live camera photo with GPS (no uploaded files)
+- it must be sent within 3 days of taking the photo, and the photo can't be dated in the future or
+  before the account was created
+- it is always flagged **offline** for council, because its time and GPS were recorded by the phone
+  alone and couldn't be checked live
+- the "offline" mark and the photo warnings can't be removed by the resident afterwards
+
+What no website can fully prevent: someone who rewrites the app on their own device can still invent
+GPS, times and photo fingerprints. That's why council sees how every photo was taken, and why repairs
+are verified by council before a report is closed.
+
