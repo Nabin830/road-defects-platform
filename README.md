@@ -72,7 +72,8 @@ src/
   assets/             Web-optimised logos and illustrations
   Logos/              Original brand artwork (not all used by the site)
 supabase/
-  Database.sql        The only SQL file: wipes and builds the whole database
+  Database.sql        Wipes and builds the whole database
+  Council-Account.sql Re-creates the council@gmail.com admin with a new password
   functions/geocode/  Optional Edge Function: cached address lookups
 scripts/seo-build.mjs Runs after the build: per-page meta, robots.txt, sitemap.xml
 docs/                 Setup, Supabase, deployment, troubleshooting

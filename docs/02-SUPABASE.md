@@ -107,6 +107,10 @@ sign-up shows an error asking council to turn it off.
 
 ## 5. Create the admin account
 
+Can't sign in as council (forgotten password or missing account)? Change the password in
+`supabase/Council-Account.sql` and run it: it re-creates `council@gmail.com` as a confirmed admin
+without touching reports or other accounts.
+
 `Database.sql` already does this if `council@gmail.com` existed when it ran. To promote it without
 wiping anything, run just this line:
 
